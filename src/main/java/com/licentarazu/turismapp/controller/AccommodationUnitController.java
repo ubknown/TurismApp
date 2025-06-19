@@ -1,14 +1,17 @@
 package com.licentarazu.turismapp.controller;
 
 import com.licentarazu.turismapp.model.AccommodationUnit;
+import com.licentarazu.turismapp.model.User;
+import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
+import com.licentarazu.turismapp.repository.UserRepository;
 import com.licentarazu.turismapp.service.AccommodationUnitService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -20,10 +23,16 @@ import java.util.Optional;
 public class AccommodationUnitController {
 
     private final AccommodationUnitService unitService;
+    private final UserRepository userRepository;
+    private final AccommodationUnitRepository unitRepository;
 
     @Autowired
-    public AccommodationUnitController(AccommodationUnitService unitService) {
+    public AccommodationUnitController(AccommodationUnitService unitService,
+                                       UserRepository userRepository,
+                                       AccommodationUnitRepository unitRepository) {
         this.unitService = unitService;
+        this.userRepository = userRepository;
+        this.unitRepository = unitRepository;
     }
 
     // Adaugă o unitate nouă
@@ -85,14 +94,13 @@ public class AccommodationUnitController {
         return unitService.getFilteredUnits(location, minPrice, maxPrice, minCapacity, maxCapacity, type, minRating);
     }
 
-    // Returnează unitățile de cazare disponibile într-un interval de check-in și check-out
+    // Returnează unitățile disponibile într-un interval
     @GetMapping("/available")
     public List<AccommodationUnit> getAvailableUnits(
             @RequestParam("checkIn") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam("checkOut") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
         return unitService.findAvailableUnits(checkIn, checkOut);
     }
-// ... celelalte metode
 
     // Returnează unitățile de cazare aflate într-o rază (km) față de un oraș dat
     @GetMapping("/proximity")
@@ -102,4 +110,14 @@ public class AccommodationUnitController {
         return unitService.findUnitsNearCity(city, radiusKm);
     }
 
+    // ✅ Returnează doar unitățile deținute de utilizatorul logat
+    @GetMapping("/my-units")
+    public ResponseEntity<List<AccommodationUnit>> getMyUnits(Authentication authentication) {
+        String email = authentication.getName(); // JWT conține emailul
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        List<AccommodationUnit> myUnits = unitRepository.findByOwner(user);
+        return ResponseEntity.ok(myUnits);
+    }
 }

@@ -26,12 +26,10 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     // ✅ Metoda care calculează profitul lunar (dacă DATEDIFF merge)
     @Query("SELECT new com.licentarazu.turismapp.dto.MonthlyProfitDTO(" +
-            "   FUNCTION('YEAR_MONTH', r.startDate), " +
-            "   SUM(r.unit.pricePerNight * FUNCTION('DATEDIFF', r.endDate, r.startDate))" +
-            ") " +
-            "FROM Reservation r " +
-            "WHERE r.unit.id = :unitId " +
-            "GROUP BY FUNCTION('YEAR_MONTH', r.startDate) " +
-            "ORDER BY FUNCTION('YEAR_MONTH', r.startDate)")
+            "YEAR(r.startDate), MONTH(r.startDate), " +
+            "SUM(CAST(r.unit.pricePerNight AS double) * CAST(FUNCTION('DATEDIFF', r.endDate, r.startDate) AS double))" +
+            ") FROM Reservation r WHERE r.unit.id = :unitId " +
+            "GROUP BY YEAR(r.startDate), MONTH(r.startDate)")
     List<MonthlyProfitDTO> findMonthlyProfitsByUnitId(@Param("unitId") Long unitId);
+
 }

@@ -16,7 +16,8 @@ public class User {
 
     private String password;
 
-    private String role; // ex: ADMIN, CLIENT, PROPRIETAR_UNITATE
+    @Enumerated(EnumType.STRING)
+    private Role role; // ADMIN, USER, OWNER
 
     // Getteri și setteri
     public Long getId() {
@@ -51,11 +52,11 @@ public class User {
         this.password = password;
     }
 
-    public String getRole() {
+    public Role getRole() {
         return role;
     }
 
-    public void setRole(String role) {
+    public void setRole(Role role) {
         this.role = role;
     }
 }

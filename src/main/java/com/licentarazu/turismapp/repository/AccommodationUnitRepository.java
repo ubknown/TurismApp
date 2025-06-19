@@ -1,6 +1,7 @@
 package com.licentarazu.turismapp.repository;
 
 import com.licentarazu.turismapp.model.AccommodationUnit;
+import com.licentarazu.turismapp.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,8 +33,7 @@ public interface AccommodationUnitRepository extends JpaRepository<Accommodation
             @Param("minRating") Double minRating
     );
 
-
-
     List<AccommodationUnit> findByLocationContainingIgnoreCase(String location);
 
+    List<AccommodationUnit> findByOwner(User owner);
 }
