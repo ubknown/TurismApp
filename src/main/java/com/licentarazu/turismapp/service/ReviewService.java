@@ -61,4 +61,41 @@ public class ReviewService {
         return unit.map(reviewRepository::findAverageRatingByAccommodationUnit)
                 .orElse(0.0);
     }
+
+    // Get reviews by user
+    public List<Review> getReviewsByUser(Long userId) {
+        Optional<User> user = userRepository.findById(userId);
+        return user.map(reviewRepository::findByUser)
+                .orElseThrow(() -> new RuntimeException("User not found."));
+    }
+    
+    // ===== DASHBOARD METHODS =====
+    
+    /**
+     * Get average rating for all units owned by a specific user
+     */
+    public double getAverageRatingByOwner(User owner) {
+        Double averageRating = reviewRepository.findAverageRatingByOwner(owner);
+        return averageRating != null ? averageRating : 0.0;
+    }
+    
+    /**
+     * Calculate guest satisfaction score based on ratings distribution
+     */
+    public double getGuestSatisfactionScore(User owner) {
+        List<Review> ownerReviews = reviewRepository.findByAccommodationUnitOwner(owner);
+        
+        if (ownerReviews.isEmpty()) {
+            return 0.0;
+        }
+        
+        // Calculate weighted satisfaction score
+        double totalScore = 0.0;
+        for (Review review : ownerReviews) {
+            // 5-star = 100%, 4-star = 80%, 3-star = 60%, 2-star = 40%, 1-star = 20%
+            totalScore += (review.getRating() * 20.0);
+        }
+        
+        return totalScore / ownerReviews.size();
+    }
 }

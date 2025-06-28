@@ -1,0 +1,313 @@
+{
+	"info": {
+		"name": "Tourism App API",
+		"description": "Complete API collection for Tourism Management App",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwtToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "jwtToken",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Test Owner\",\n    \"email\": \"owner@test.com\",\n    \"password\": \"password123\",\n    \"role\": \"OWNER\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (responseCode.code === 200) {",
+									"    var response = JSON.parse(responseBody);",
+									"    if (response.token) {",
+									"        pm.environment.set(\"jwtToken\", response.token);",
+									"        console.log(\"JWT Token set: \" + response.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"owner@test.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "login"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Get Dashboard Stats",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/dashboard/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "dashboard", "stats"]
+						}
+					}
+				},
+				{
+					"name": "Get Dashboard Insights",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/dashboard/insights",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "dashboard", "insights"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Accommodation Units",
+			"item": [
+				{
+					"name": "Create Unit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Beautiful Beach House\",\n    \"description\": \"A stunning beach house with ocean views\",\n    \"address\": \"123 Ocean Drive, Miami\",\n    \"city\": \"Miami\",\n    \"country\": \"USA\",\n    \"pricePerNight\": 150.0,\n    \"type\": \"HOUSE\",\n    \"maxGuests\": 6,\n    \"bedrooms\": 3,\n    \"bathrooms\": 2,\n    \"amenities\": [\"WiFi\", \"Pool\", \"Beach Access\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/accommodation-units",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "accommodation-units"]
+						}
+					}
+				},
+				{
+					"name": "Get My Units",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/accommodation-units/my-units",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "accommodation-units", "my-units"]
+						}
+					}
+				},
+				{
+					"name": "Get All Units",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/accommodation-units",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "accommodation-units"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Bookings",
+			"item": [
+				{
+					"name": "Create Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"accommodationUnitId\": 1,\n    \"checkInDate\": \"2025-07-01\",\n    \"checkOutDate\": \"2025-07-05\",\n    \"guestName\": \"John Doe\",\n    \"guestEmail\": \"john@example.com\",\n    \"totalPrice\": 600.0\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings"]
+						}
+					}
+				},
+				{
+					"name": "Get My Bookings",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/my-bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "my-bookings"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Profit Statistics",
+			"item": [
+				{
+					"name": "Calculate Profit",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/profit/calculate?months=6",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "profit", "calculate"],
+							"query": [
+								{
+									"key": "months",
+									"value": "6"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Monthly Profit",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/profit/monthly?months=12",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "profit", "monthly"],
+							"query": [
+								{
+									"key": "months",
+									"value": "12"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Predict Future Profits",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/profit/predict?historyMonths=6&predictMonths=3",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "profit", "predict"],
+							"query": [
+								{
+									"key": "historyMonths",
+									"value": "6"
+								},
+								{
+									"key": "predictMonths",
+									"value": "3"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Reviews",
+			"item": [
+				{
+					"name": "Create Review",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"accommodationUnitId\": 1,\n    \"rating\": 5,\n    \"comment\": \"Amazing place! Highly recommended!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/reviews",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "reviews"]
+						}
+					}
+				},
+				{
+					"name": "Get Reviews for Unit",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/reviews/unit/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "reviews", "unit", "1"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

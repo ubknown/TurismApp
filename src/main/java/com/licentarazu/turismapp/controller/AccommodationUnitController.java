@@ -1,44 +1,94 @@
 package com.licentarazu.turismapp.controller;
 
-import com.licentarazu.turismapp.model.AccommodationUnit;
-import com.licentarazu.turismapp.model.User;
-import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
-import com.licentarazu.turismapp.repository.UserRepository;
-import com.licentarazu.turismapp.service.AccommodationUnitService;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.licentarazu.turismapp.dto.AccommodationUnitWithPhotosDTO;
+import com.licentarazu.turismapp.model.AccommodationPhoto;
+import com.licentarazu.turismapp.model.AccommodationUnit;
+import com.licentarazu.turismapp.model.User;
+import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
+import com.licentarazu.turismapp.repository.UserRepository;
+import com.licentarazu.turismapp.service.AccommodationPhotoService;
+import com.licentarazu.turismapp.service.AccommodationUnitService;
 
 @RestController
 @RequestMapping("/api/units")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = { "http://localhost:5173", "http://localhost:5174", "http://localhost:3000",
+        "http://127.0.0.1:5173", "http://127.0.0.1:5174" }, allowCredentials = "true", methods = { RequestMethod.GET,
+                RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS })
 public class AccommodationUnitController {
 
     private final AccommodationUnitService unitService;
     private final UserRepository userRepository;
     private final AccommodationUnitRepository unitRepository;
+    private final AccommodationPhotoService photoService;
 
     @Autowired
     public AccommodationUnitController(AccommodationUnitService unitService,
-                                       UserRepository userRepository,
-                                       AccommodationUnitRepository unitRepository) {
+            UserRepository userRepository,
+            AccommodationUnitRepository unitRepository,
+            AccommodationPhotoService photoService) {
         this.unitService = unitService;
         this.userRepository = userRepository;
         this.unitRepository = unitRepository;
+        this.photoService = photoService;
     }
 
-    // Adaugă o unitate nouă
+    // ✅ Enhanced unit creation with authentication, ownership, and location
+    // validation
     @PostMapping
-    public AccommodationUnit addUnit(@RequestBody AccommodationUnit unit) {
-        return unitService.addUnit(unit);
+    public ResponseEntity<?> addUnit(@RequestBody AccommodationUnit unit, Authentication authentication) {
+        try {
+            String email = authentication.getName(); // JWT conține emailul
+            User owner = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            // Set the owner for the unit
+            unit.setOwner(owner);
+
+            AccommodationUnit savedUnit = unitService.addUnit(unit);
+            return ResponseEntity.status(HttpStatus.CREATED).body(savedUnit);
+
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            // Location uniqueness violation or validation errors
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            // TODO: Add proper logging for debugging
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error creating unit: " + e.getMessage());
+        }
     }
 
     // Returnează toate unitățile
@@ -53,44 +103,103 @@ public class AccommodationUnitController {
         return unitService.searchByLocation(location);
     }
 
-    // Caută după ID
+    // Caută după ID cu fotografii
     @GetMapping("/{id}")
-    public Optional<AccommodationUnit> getUnitById(@PathVariable Long id) {
-        return unitService.getById(id);
-    }
-
-    // Șterge o unitate după ID
-    @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteUnit(@PathVariable Long id) {
-        Optional<AccommodationUnit> unit = unitService.getById(id);
-        if (unit.isPresent()) {
-            unitService.deleteById(id);
-            return ResponseEntity.ok("Unitatea a fost ștearsă cu succes!");
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unitatea nu a fost găsită.");
+    public ResponseEntity<AccommodationUnitWithPhotosDTO> getUnitById(@PathVariable Long id) {
+        try {
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            AccommodationUnit unit = unitOpt.get();
+            List<AccommodationPhoto> photos = photoService.getPhotosByUnitId(id);
+            List<String> photoUrls = photos.stream()
+                .map(AccommodationPhoto::getPhotoUrl)
+                .toList();
+            
+            AccommodationUnitWithPhotosDTO response = new AccommodationUnitWithPhotosDTO(unit, photoUrls);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // Modifică o unitate existentă după ID
-    @PutMapping("/{id}")
-    public ResponseEntity<AccommodationUnit> updateUnit(@PathVariable Long id, @RequestBody AccommodationUnit updatedUnit) {
+    // ✅ Enhanced unit deletion with owner verification
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteUnit(@PathVariable Long id, Authentication authentication) {
         try {
+            String email = authentication.getName();
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unitatea nu a fost găsită.");
+            }
+
+            AccommodationUnit unit = unitOpt.get();
+
+            // Verify that the user owns this unit
+            if (!unit.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Nu aveți permisiunea să ștergeți această unitate.");
+            }
+
+            unitService.deleteById(id);
+            return ResponseEntity.ok("Unitatea a fost ștearsă cu succes!");
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Eroare la ștergerea unității: " + e.getMessage());
+        }
+    }
+
+    // ✅ Enhanced unit update with owner verification and location validation
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateUnit(@PathVariable Long id, @RequestBody AccommodationUnit updatedUnit,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unitatea nu a fost găsită.");
+            }
+
+            AccommodationUnit existingUnit = unitOpt.get();
+
+            // Verify that the user owns this unit
+            if (!existingUnit.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Nu aveți permisiunea să modificați această unitate.");
+            }
+
             AccommodationUnit updated = unitService.updateUnit(id, updatedUnit);
             return ResponseEntity.ok(updated);
+
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unitatea nu a fost găsită.");
+        } catch (Exception e) {
+            // TODO: Add proper logging for debugging
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Eroare la actualizarea unității: " + e.getMessage());
         }
     }
 
     // Filtrare după locație, preț, capacitate și tip
     @GetMapping("/filter")
     public List<AccommodationUnit> filterUnits(@RequestParam(required = false) String location,
-                                               @RequestParam(required = false) Double minPrice,
-                                               @RequestParam(required = false) Double maxPrice,
-                                               @RequestParam(required = false) Integer minCapacity,
-                                               @RequestParam(required = false) Integer maxCapacity,
-                                               @RequestParam(required = false) String type,
-                                               @RequestParam(required = false) Double minRating) {
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) Integer minCapacity,
+            @RequestParam(required = false) Integer maxCapacity,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Double minRating) {
         return unitService.getFilteredUnits(location, minPrice, maxPrice, minCapacity, maxCapacity, type, minRating);
     }
 
@@ -119,5 +228,407 @@ public class AccommodationUnitController {
 
         List<AccommodationUnit> myUnits = unitRepository.findByOwner(user);
         return ResponseEntity.ok(myUnits);
+    }
+
+    // Profit generat de unitățile deținute de utilizatorul logat
+    @GetMapping("/my-units/profit")
+    public List<AccommodationUnitService.ProfitResult> getMyUnitsProfit(
+            Authentication authentication,
+            @RequestParam(name = "lastMonths", defaultValue = "0") int lastMonths) {
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return unitService.calculateProfit(lastMonths, user);
+    }
+
+    // Profit lunar pentru unitățile deținute de utilizatorul logat
+    @GetMapping("/my-units/profit/monthly")
+    public List<AccommodationUnitService.MonthlyProfitResult> getMyUnitsMonthlyProfit(
+            Authentication authentication,
+            @RequestParam(name = "lastMonths", defaultValue = "0") int lastMonths) {
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return unitService.getMonthlyProfit(lastMonths, user);
+    }
+
+    // Predicție profit lunar pentru unitățile deținute de utilizatorul logat
+    @GetMapping("/my-units/profit/predict")
+    public List<AccommodationUnitService.PredictedProfitDTO> predictMyUnitsProfit(
+            Authentication authentication,
+            @RequestParam(name = "lastMonths", defaultValue = "6") int lastMonths,
+            @RequestParam(name = "predictMonths", defaultValue = "3") int predictMonths) {
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return unitService.predictFutureProfits(lastMonths, predictMonths, user);
+    }
+
+    // Filtrare avansată: proximitate + disponibilitate
+    @GetMapping("/advanced-filter")
+    public List<AccommodationUnit> filterUnitsAdvanced(
+            @RequestParam String location,
+            @RequestParam Double radiusKm,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        return unitService.filterUnitsAdvanced(location, radiusKm, checkIn, checkOut);
+    }
+
+    // ✅ Public endpoint for unit search and filtering (used by UnitsListPage.jsx)
+    @GetMapping("/public")
+    public ResponseEntity<List<AccommodationUnit>> getPublicUnits(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) Integer capacity,
+            @RequestParam(required = false) String amenities,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+
+        // Use county filter if provided, otherwise use location
+        String filterLocation = county != null ? county : location;
+        if (search != null && !search.isEmpty() && filterLocation == null) {
+            filterLocation = search;
+        }
+
+        List<AccommodationUnit> units = unitService.getFilteredUnits(
+                filterLocation,
+                minPrice,
+                maxPrice,
+                capacity,
+                null, // maxCapacity not needed for this endpoint
+                type, // ✅ Added type filtering
+                null // minRating not needed
+        );
+
+        // If search term is provided, further filter by name/description
+        if (search != null && !search.isEmpty()) {
+            units = units.stream()
+                    .filter(unit -> unit.getName().toLowerCase().contains(search.toLowerCase()) ||
+                            unit.getDescription().toLowerCase().contains(search.toLowerCase()) ||
+                            unit.getLocation().toLowerCase().contains(search.toLowerCase()))
+                    .toList();
+        }
+
+        // Enhanced county filtering - use dedicated county field if available, fallback to location
+        if (county != null && !county.isEmpty()) {
+            units = units.stream()
+                    .filter(unit -> {
+                        // First check the dedicated county field
+                        if (unit.getCounty() != null && !unit.getCounty().isEmpty()) {
+                            return unit.getCounty().toLowerCase().contains(county.toLowerCase());
+                        }
+                        // Fallback to location field for backward compatibility
+                        return unit.getLocation() != null &&
+                               unit.getLocation().toLowerCase().contains(county.toLowerCase());
+                    })
+                    .toList();
+        }
+
+        // If amenities filter is provided
+        if (amenities != null && !amenities.isEmpty()) {
+            // Note: This requires amenities field in AccommodationUnit model
+            // For now, we'll skip this filter until the model is enhanced
+        }
+
+        // ✅ Apply date-based availability filter if check-in and check-out dates are
+        // provided
+        if (checkIn != null && checkOut != null) {
+            // Validate dates
+            if (checkIn.isAfter(checkOut)) {
+                return ResponseEntity.badRequest().body(List.of()); // Return empty list for invalid date range
+            }
+            if (checkIn.isBefore(LocalDate.now())) {
+                return ResponseEntity.badRequest().body(List.of()); // Return empty list for past dates
+            }
+
+            // Filter units that are available in the given date range
+            units = unitService.filterUnitsByAvailability(units, checkIn, checkOut);
+        }
+
+        return ResponseEntity.ok(units);
+    }
+
+    // ✅ Update unit status (for owners)
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<AccommodationUnit> updateUnitStatus(@PathVariable Long id,
+            @RequestBody StatusUpdateRequest request,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+
+            AccommodationUnit unit = unitOpt.get();
+
+            // Check if user owns this unit
+            if (!unit.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            unit.setStatus(request.getStatus());
+            AccommodationUnit updatedUnit = unitService.updateUnit(id, unit);
+            return ResponseEntity.ok(updatedUnit);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    // Helper class for status update request
+    public static class StatusUpdateRequest {
+        private String status;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+    }
+
+    // ✅ Get profit analytics for the authenticated owner
+    @GetMapping("/my-units/profit/analytics")
+    public ResponseEntity<?> getOwnerProfitAnalytics(
+            @RequestParam(defaultValue = "12") int months,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User owner = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Map<String, Double> analytics = unitService.getOwnerProfitAnalytics(owner, months);
+            return ResponseEntity.ok(analytics);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching profit analytics: " + e.getMessage());
+        }
+    }
+
+    // ✅ Get comprehensive profit summary for the authenticated owner
+    @GetMapping("/my-units/profit/summary")
+    public ResponseEntity<?> getOwnerProfitSummary(Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User owner = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Map<String, Object> summary = unitService.getOwnerProfitSummary(owner);
+            return ResponseEntity.ok(summary);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching profit summary: " + e.getMessage());
+        }
+    }
+
+    // ✅ Get specific unit details (only if owned by authenticated user)
+    @GetMapping("/{id}/owner-details")
+    public ResponseEntity<?> getUnitOwnerDetails(@PathVariable Long id, Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unitatea nu a fost găsită.");
+            }
+
+            AccommodationUnit unit = unitOpt.get();
+
+            // Verify that the user owns this unit
+            if (!unit.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Nu aveți permisiunea să accesați această unitate.");
+            }
+
+            return ResponseEntity.ok(unit);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching unit details: " + e.getMessage());
+        }
+    }
+
+    // ✅ Debug endpoint to check total units in database - RESTRICTED TO DEV
+    @GetMapping("/debug/count")
+    @CrossOrigin(origins = { "http://localhost:5174", "http://localhost:5173", "http://localhost:3000" })
+    @org.springframework.context.annotation.Profile({"dev", "development"})
+    public ResponseEntity<Map<String, Object>> getUnitsDebugInfo() {
+        try {
+            List<AccommodationUnit> allUnits = unitRepository.findAll();
+            List<AccommodationUnit> availableUnits = unitRepository.findByFiltersWithRating(
+                    null, null, null, null, null, null, null);
+
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("totalUnits", allUnits.size());
+            debugInfo.put("availableUnits", availableUnits.size());
+            debugInfo.put("allUnitsDetails", allUnits.stream()
+                    .map(unit -> Map.of(
+                            "id", unit.getId(),
+                            "name", unit.getName(),
+                            "available", unit.isAvailable(),
+                            "location", unit.getLocation() != null ? unit.getLocation() : "null"))
+                    .toList());
+
+            return ResponseEntity.ok(debugInfo);
+        } catch (Exception e) {
+            Map<String, Object> errorInfo = Map.of(
+                    "error", e.getMessage(),
+                    "cause", e.getCause() != null ? e.getCause().toString() : "unknown");
+            return ResponseEntity.ok(errorInfo);
+        }
+    }
+
+    // ✅ Simple health check endpoint (public) - RESTRICTED TO DEV
+    @GetMapping("/debug/health")
+    @CrossOrigin(origins = { "http://localhost:5174", "http://localhost:5173", "http://localhost:3000" })
+    @org.springframework.context.annotation.Profile({"dev", "development"})
+    public ResponseEntity<Map<String, String>> healthCheck() {
+        Map<String, String> health = Map.of(
+                "status", "UP",
+                "timestamp", LocalDateTime.now().toString(),
+                "service", "AccommodationUnit API");
+        return ResponseEntity.ok(health);
+    }
+
+    // Endpoint pentru adăugarea unităților cu fotografii
+    @PostMapping("/with-photos")
+    public ResponseEntity<?> addUnitWithPhotos(
+            @RequestParam("unit") String unitJson,
+            @RequestParam("photos") MultipartFile[] photos,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User owner = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            // Parse unit JSON
+            ObjectMapper mapper = new ObjectMapper();
+            AccommodationUnit unit = mapper.readValue(unitJson, AccommodationUnit.class);
+            unit.setOwner(owner);
+
+            // Validate photos
+            if (photos.length == 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("At least one photo is required");
+            }
+            if (photos.length > 10) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Maximum 10 photos allowed");
+            }
+
+            // Save photos and get URLs
+            List<String> photoUrls = savePhotoFiles(photos);
+
+            AccommodationUnit savedUnit = unitService.addUnitWithPhotos(unit, photoUrls);
+            return ResponseEntity.status(HttpStatus.CREATED).body(savedUnit);
+
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to create unit: " + e.getMessage());
+        }
+    }
+
+    // Endpoint pentru actualizarea unităților cu fotografii
+    @PutMapping("/{id}/with-photos")
+    public ResponseEntity<?> updateUnitWithPhotos(
+            @PathVariable Long id,
+            @RequestParam("unit") String unitJson,
+            @RequestParam("photos") MultipartFile[] photos,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            Optional<AccommodationUnit> unitOpt = unitService.getById(id);
+            if (unitOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unit not found");
+            }
+
+            AccommodationUnit existingUnit = unitOpt.get();
+            if (!existingUnit.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied");
+            }
+
+            // Parse unit JSON
+            ObjectMapper mapper = new ObjectMapper();
+            AccommodationUnit updatedUnit = mapper.readValue(unitJson, AccommodationUnit.class);
+            updatedUnit.setId(id);
+            updatedUnit.setOwner(user);
+
+            // Validate photos
+            if (photos.length == 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("At least one photo is required");
+            }
+            if (photos.length > 10) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Maximum 10 photos allowed");
+            }
+
+            // Save photos and get URLs
+            List<String> photoUrls = savePhotoFiles(photos);
+
+            AccommodationUnit savedUnit = unitService.updateUnitWithPhotos(updatedUnit, photoUrls);
+            return ResponseEntity.ok(savedUnit);
+
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to update unit: " + e.getMessage());
+        }
+    }
+
+    // Endpoint pentru obținerea fotografiilor unei unități
+    @GetMapping("/{id}/photos")
+    public ResponseEntity<List<AccommodationPhoto>> getUnitPhotos(@PathVariable Long id) {
+        try {
+            List<AccommodationPhoto> photos = photoService.getPhotosByUnitId(id);
+            return ResponseEntity.ok(photos);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // Helper method to save photo files and return their URLs
+    private List<String> savePhotoFiles(MultipartFile[] photos) throws IOException {
+        List<String> photoUrls = new ArrayList<>();
+        String uploadDir = "uploads/units/";
+        
+        // Create directory if it doesn't exist
+        Path uploadPath = Paths.get(uploadDir);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+
+        for (MultipartFile photo : photos) {
+            if (!photo.isEmpty() && photo.getOriginalFilename() != null) {
+                String originalFilename = photo.getOriginalFilename();
+                String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
+                String filename = UUID.randomUUID().toString() + fileExtension;
+                
+                Path filePath = uploadPath.resolve(filename);
+                Files.write(filePath, photo.getBytes());
+                
+                photoUrls.add("/uploads/units/" + filename);
+            }
+        }
+        
+        return photoUrls;
     }
 }

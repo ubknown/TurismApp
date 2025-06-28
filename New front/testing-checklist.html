@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tourism App - Testing Checklist</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.7);
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 5px solid #667eea;
+        }
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+        }
+        .checklist input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        .role-header {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .pending { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Tourism Management App - Testing Checklist</h1>
+        
+        <div class="test-section">
+            <h2>🚀 Setup Verification</h2>
+            <ul class="checklist">
+                <li><input type="checkbox"> Backend running on http://localhost:8080</li>
+                <li><input type="checkbox"> Frontend running on http://localhost:5173</li>
+                <li><input type="checkbox"> Database connected and accessible</li>
+                <li><input type="checkbox"> Browser developer tools open</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2 class="role-header">👤 Guest User Testing</h2>
+            <h3>Registration & Authentication</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Register new guest account</li>
+                <li><input type="checkbox"> Login with guest credentials</li>
+                <li><input type="checkbox"> Verify JWT token stored in localStorage</li>
+                <li><input type="checkbox"> Check navigation shows guest options</li>
+            </ul>
+            
+            <h3>Unit Browsing</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Browse units without authentication required</li>
+                <li><input type="checkbox"> Search units by location/name</li>
+                <li><input type="checkbox"> Filter by price range</li>
+                <li><input type="checkbox"> Filter by capacity and amenities</li>
+                <li><input type="checkbox"> View unit details page</li>
+            </ul>
+            
+            <h3>Booking Process</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Open booking form from unit details</li>
+                <li><input type="checkbox"> Fill all required booking fields</li>
+                <li><input type="checkbox"> Verify price calculation (days × rate)</li>
+                <li><input type="checkbox"> Submit booking successfully</li>
+                <li><input type="checkbox"> View booking in booking history</li>
+            </ul>
+            
+            <h3>Review System</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Only completed bookings show review option</li>
+                <li><input type="checkbox"> Submit rating and comment</li>
+                <li><input type="checkbox"> Review appears on unit details page</li>
+                <li><input type="checkbox"> Cannot review same unit twice</li>
+            </ul>
+            
+            <h3>Access Restrictions</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Cannot access /dashboard (redirected)</li>
+                <li><input type="checkbox"> Cannot access /my-units (redirected)</li>
+                <li><input type="checkbox"> Cannot see owner-specific data</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2 class="role-header">🏢 Owner User Testing</h2>
+            <h3>Registration & Authentication</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Register new owner account</li>
+                <li><input type="checkbox"> Login with owner credentials</li>
+                <li><input type="checkbox"> Verify role-based navigation</li>
+                <li><input type="checkbox"> Access dashboard successfully</li>
+            </ul>
+            
+            <h3>Unit Management</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Create new accommodation unit</li>
+                <li><input type="checkbox"> Upload multiple images</li>
+                <li><input type="checkbox"> Edit unit details</li>
+                <li><input type="checkbox"> Toggle unit active/inactive status</li>
+                <li><input type="checkbox"> View only own units in list</li>
+            </ul>
+            
+            <h3>Booking Management</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> View bookings for own units only</li>
+                <li><input type="checkbox"> See guest contact information</li>
+                <li><input type="checkbox"> View booking details and dates</li>
+                <li><input type="checkbox"> Revenue calculations accurate</li>
+            </ul>
+            
+            <h3>Analytics Dashboard</h3>
+            <ul class="checklist">
+                <li><input type="checkbox"> Profit chart loads with real data</li>
+                <li><input type="checkbox"> Time range filters work (3,6,12,24 months)</li>
+                <li><input type="checkbox"> AI prediction displays future months</li>
+                <li><input type="checkbox"> Dashboard stats show correct totals</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2 class="role-header">🔒 Security Testing</h2>
+            <ul class="checklist">
+                <li><input type="checkbox"> JWT token expires and triggers auto-logout</li>
+                <li><input type="checkbox"> 401 responses redirect to login</li>
+                <li><input type="checkbox"> Protected routes require authentication</li>
+                <li><input type="checkbox"> Role-based routes enforce permissions</li>
+                <li><input type="checkbox"> Users cannot access other users' data</li>
+                <li><input type="checkbox"> API endpoints validate user ownership</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2 class="role-header">📱 User Experience Testing</h2>
+            <ul class="checklist">
+                <li><input type="checkbox"> All forms validate input properly</li>
+                <li><input type="checkbox"> Loading states show during API calls</li>
+                <li><input type="checkbox"> Error messages are clear and helpful</li>
+                <li><input type="checkbox"> Success notifications appear</li>
+                <li><input type="checkbox"> Mobile responsive design works</li>
+                <li><input type="checkbox"> Glassmorphism styling displays correctly</li>
+                <li><input type="checkbox"> Navigation adapts based on auth status</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 Final Validation</h2>
+            <ul class="checklist">
+                <li><input type="checkbox"> All critical user flows complete successfully</li>
+                <li><input type="checkbox"> No console errors in browser developer tools</li>
+                <li><input type="checkbox"> Network tab shows proper API calls</li>
+                <li><input type="checkbox"> localStorage contains valid JWT tokens</li>
+                <li><input type="checkbox"> Application handles network failures gracefully</li>
+                <li><input type="checkbox"> Production build works without issues</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Testing Results Summary</h2>
+            <p>Total Tests: <span id="total">0</span></p>
+            <p>Passed: <span id="passed" class="status pass">0</span></p>
+            <p>Failed: <span id="failed" class="status fail">0</span></p>
+            <p>Pending: <span id="pending" class="status pending">0</span></p>
+            <p>Completion: <span id="completion">0%</span></p>
+        </div>
+    </div>
+
+    <script>
+        function updateCounts() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const total = checkboxes.length;
+            const passed = document.querySelectorAll('input[type="checkbox"]:checked').length;
+            const pending = total - passed;
+            const completion = Math.round((passed / total) * 100);
+
+            document.getElementById('total').textContent = total;
+            document.getElementById('passed').textContent = passed;
+            document.getElementById('failed').textContent = 0; // Manual tracking
+            document.getElementById('pending').textContent = pending;
+            document.getElementById('completion').textContent = completion + '%';
+        }
+
+        // Add event listeners to all checkboxes
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', updateCounts);
+        });
+
+        // Initial count
+        updateCounts();
+    </script>
+</body>
+</html>

@@ -30,22 +30,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        // ✅ CRITICAL FIX: Enhanced JWT validation with null checks
+        if (authHeader != null && authHeader.startsWith("Bearer ") && authHeader.length() > 7) {
             String token = authHeader.substring(7);
-            String email = jwtUtil.extractUsername(token);
+            
+            // ✅ Add null check for token
+            if (token != null && !token.trim().isEmpty()) {
+                String email = jwtUtil.extractUsername(token);
 
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                // ✅ Enhanced validation: email not null, not empty, and no existing auth
+                if (email != null && !email.trim().isEmpty() && 
+                    SecurityContextHolder.getContext().getAuthentication() == null) {
+                    
+                    try {
+                        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                        
+                        // ✅ Additional null check for userDetails and token validation
+                        if (userDetails != null && jwtUtil.validateToken(token)) {
+                            UsernamePasswordAuthenticationToken authToken =
+                                    new UsernamePasswordAuthenticationToken(
+                                            userDetails,
+                                            null,
+                                            userDetails.getAuthorities()
+                                    );
 
-                if (jwtUtil.validateToken(token)) {
-                    UsernamePasswordAuthenticationToken authToken =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails,
-                                    null,
-                                    userDetails.getAuthorities()
-                            );
-
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                            SecurityContextHolder.getContext().setAuthentication(authToken);
+                        }
+                    } catch (RuntimeException e) {
+                        // ✅ SECURITY: Log security attempt but don't expose details
+                        // TODO: Add proper security logging for monitoring
+                        SecurityContextHolder.clearContext();
+                    }
                 }
             }
         }

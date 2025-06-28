@@ -19,6 +19,7 @@ public class Booking {
 
     private String guestName; // Opțional, dar util
     private String guestEmail;
+    private Double totalPrice; // Total price for the booking
 
     // Constructori
     public Booking() {}
@@ -74,5 +75,13 @@ public class Booking {
 
     public void setGuestEmail(String guestEmail) {
         this.guestEmail = guestEmail;
+    }
+
+    public Double getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(Double totalPrice) {
+        this.totalPrice = totalPrice;
     }
 }
