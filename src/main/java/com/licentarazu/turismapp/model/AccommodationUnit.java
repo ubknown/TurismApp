@@ -4,6 +4,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -34,6 +37,8 @@ public class AccommodationUnit {
     private String location;
 
     private String county; // County/Județ field
+    
+    private String phone; // Contact phone number
 
     private Double latitude; // <-- ADĂUGAT
     private Double longitude; // <-- ADĂUGAT
@@ -42,18 +47,28 @@ public class AccommodationUnit {
 
     private int capacity;
 
-    private boolean available;
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private boolean available = true; // Default to available
 
     private LocalDate createdAt;
 
     private String type; // ex: "Hotel", "Cabană", "Apartament"
 
     // Additional fields for frontend compatibility
+    @Column(nullable = false)
     private Double rating = 0.0;
+    
+    @Column(nullable = false)
     private Integer reviewCount = 0;
+    
+    @Column(nullable = false)
     private Integer totalBookings = 0;
+    
+    @Column(nullable = false)
     private Double monthlyRevenue = 0.0;
-    private String status = "active";
+    
+    @Column(nullable = false, length = 20)
+    private String status = "active"; // Default to active
 
     @ElementCollection
     @CollectionTable(name = "accommodation_unit_images", joinColumns = @JoinColumn(name = "accommodation_unit_id"))
@@ -65,18 +80,40 @@ public class AccommodationUnit {
     @Column(name = "amenity")
     private List<String> amenities = new ArrayList<>();
 
-    @ManyToOne
-    @JoinColumn(name = "owner_id")
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    @JsonIgnore // Prevent serialization of owner to avoid circular references
     private User owner;
 
     @OneToMany(mappedBy = "accommodationUnit", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore // Prevent serialization of bookings to avoid circular references
     private List<Booking> bookings = new ArrayList<>();
 
     @OneToMany(mappedBy = "accommodationUnit", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore // Prevent serialization of reviews to avoid circular references
     private List<Review> reviews = new ArrayList<>();
 
     @OneToMany(mappedBy = "accommodationUnit", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore // Prevent serialization of photos to avoid circular references
     private List<AccommodationPhoto> photos = new ArrayList<>();
+
+    // --- Constructors ---
+    
+    public AccommodationUnit() {
+        // JPA Default constructor with proper defaults
+        this.available = true;
+        this.status = "active";
+        this.rating = 0.0;
+        this.reviewCount = 0;
+        this.totalBookings = 0;
+        this.monthlyRevenue = 0.0;
+        this.images = new ArrayList<>();
+        this.amenities = new ArrayList<>();
+        this.bookings = new ArrayList<>();
+        this.reviews = new ArrayList<>();
+        this.photos = new ArrayList<>();
+        this.createdAt = LocalDate.now();
+    }
 
     // --- Getteri și setteri ---
 
@@ -118,6 +155,14 @@ public class AccommodationUnit {
 
     public void setCounty(String county) {
         this.county = county;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
     public Double getLatitude() {

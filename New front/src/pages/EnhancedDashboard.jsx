@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { 
@@ -13,6 +14,7 @@ import api from "../services/axios";
 import EnhancedProfitChart from "../components/EnhancedProfitChart";
 
 const EnhancedDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
   const [dashboardData, setDashboardData] = useState({
@@ -226,7 +228,9 @@ const EnhancedDashboard = () => {
           <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
             <h3 className="text-xl font-bold text-white mb-6">Quick Actions</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/15 rounded-lg transition-all duration-300 border border-white/10 group">
+              <button 
+                onClick={() => navigate('/add-property')}
+                className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/15 rounded-lg transition-all duration-300 border border-white/10 group">
                 <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
                   <HomeIcon className="w-5 h-5 text-white" />
                 </div>

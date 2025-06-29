@@ -12,10 +12,11 @@ import java.util.List;
 @Repository
 public interface AccommodationUnitRepository extends JpaRepository<AccommodationUnit, Long> {
 
-    @Query("SELECT a FROM AccommodationUnit a " +
+    @Query("SELECT DISTINCT a FROM AccommodationUnit a " +
+            "LEFT JOIN FETCH a.photos " +
             "LEFT JOIN Review r ON r.accommodationUnit = a " +
-            "WHERE a.available = true " +
-            "AND (:location IS NULL OR a.location = :location) " +
+            "WHERE a.available = true AND a.status = 'active' " +
+            "AND (:location IS NULL OR LOWER(a.location) LIKE LOWER(CONCAT('%', :location, '%')) OR LOWER(a.county) LIKE LOWER(CONCAT('%', :location, '%'))) " +
             "AND (:minPrice IS NULL OR a.pricePerNight >= :minPrice) " +
             "AND (:maxPrice IS NULL OR a.pricePerNight <= :maxPrice) " +
             "AND (:minCapacity IS NULL OR a.capacity >= :minCapacity) " +
@@ -36,4 +37,20 @@ public interface AccommodationUnitRepository extends JpaRepository<Accommodation
     List<AccommodationUnit> findByLocationContainingIgnoreCase(String location);
 
     List<AccommodationUnit> findByOwner(User owner);
+    
+    // Find all active and available units for public browsing with photos
+    @Query("SELECT DISTINCT a FROM AccommodationUnit a LEFT JOIN FETCH a.photos WHERE a.available = true AND a.status = 'active' ORDER BY a.createdAt DESC")
+    List<AccommodationUnit> findAllActiveAndAvailable();
+    
+    // Find all units by owner including inactive ones with photos
+    @Query("SELECT DISTINCT a FROM AccommodationUnit a LEFT JOIN FETCH a.photos WHERE a.owner = :owner ORDER BY a.createdAt DESC")
+    List<AccommodationUnit> findAllByOwnerOrdered(@Param("owner") User owner);
+    
+    // Find all active and available units with photos
+    @Query("SELECT DISTINCT a FROM AccommodationUnit a LEFT JOIN FETCH a.photos WHERE a.available = true AND a.status = 'active' ORDER BY a.createdAt DESC")
+    List<AccommodationUnit> findAllActiveUnits();
+    
+    // Find units by owner with proper ordering and photos
+    @Query("SELECT DISTINCT a FROM AccommodationUnit a LEFT JOIN FETCH a.photos WHERE a.owner = :owner ORDER BY a.createdAt DESC")
+    List<AccommodationUnit> findByOwnerOrderByCreatedAtDesc(@Param("owner") User owner);
 }

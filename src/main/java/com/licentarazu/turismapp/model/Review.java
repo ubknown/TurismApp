@@ -1,5 +1,6 @@
 package com.licentarazu.turismapp.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 
@@ -22,10 +23,12 @@ public class Review {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "accommodation_unit_id", nullable = false, foreignKey = @ForeignKey(name = "fk_review_accommodation_unit"))
+    @JsonIgnore // Prevent serialization of accommodationUnit to avoid circular references
     private AccommodationUnit accommodationUnit;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_review_user"))
+    @JsonIgnore // Prevent serialization of user to avoid circular references
     private User user;
 
     @PrePersist

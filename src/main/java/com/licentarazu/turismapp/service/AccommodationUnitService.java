@@ -2,7 +2,6 @@ package com.licentarazu.turismapp.service;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,16 +10,19 @@ import java.util.TreeMap;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.licentarazu.turismapp.model.AccommodationPhoto;
 import com.licentarazu.turismapp.model.AccommodationUnit;
 import com.licentarazu.turismapp.model.Booking;
+import com.licentarazu.turismapp.model.BookingStatus;
 import com.licentarazu.turismapp.model.Reservation;
 import com.licentarazu.turismapp.model.User;
 import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
 import com.licentarazu.turismapp.repository.BookingRepository;
 import com.licentarazu.turismapp.repository.ReservationRepository;
 import com.licentarazu.turismapp.util.GeoUtils;
+import com.licentarazu.turismapp.dto.ProfitReportDTO;
 
 @Service
 public class AccommodationUnitService {
@@ -90,9 +92,9 @@ public class AccommodationUnitService {
         }
     }
 
-    // Returnează toate unitățile
+    // Returnează toate unitățile active și disponibile
     public List<AccommodationUnit> getAllUnits() {
-        return accommodationUnitRepository.findAll();
+        return accommodationUnitRepository.findAllActiveUnits();
     }
 
     // Caută după locație (parțial, fără case-sensitive)
@@ -221,21 +223,25 @@ public class AccommodationUnitService {
         return filtered;
     }
 
+    // ✅ Enhanced profit calculation - only confirmed/completed bookings, using totalPrice
     public List<ProfitResult> calculateProfit(int months, User owner) {
         List<AccommodationUnit> myUnits = accommodationUnitRepository.findByOwner(owner);
         LocalDate now = LocalDate.now();
         LocalDate fromDate = (months > 0) ? now.minusMonths(months) : LocalDate.MIN;
         List<ProfitResult> result = new ArrayList<>();
+        
         for (AccommodationUnit unit : myUnits) {
             double profit = 0.0;
             List<Booking> bookings = bookingRepository.findByAccommodationUnit(unit);
+            
             for (Booking booking : bookings) {
-                if ((months == 0)
-                        || (booking.getCheckInDate() != null && !booking.getCheckInDate().isBefore(fromDate))) {
-                    long nights = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
-                    if (nights > 0 && unit.getPricePerNight() != null) {
-                        profit += nights * unit.getPricePerNight();
-                    }
+                // ✅ Only include confirmed or completed bookings
+                if ((booking.getStatus() == BookingStatus.CONFIRMED || booking.getStatus() == BookingStatus.COMPLETED) &&
+                    booking.getTotalPrice() != null &&
+                    ((months == 0) || (booking.getCheckInDate() != null && !booking.getCheckInDate().isBefore(fromDate)))) {
+                    
+                    // ✅ Use totalPrice directly for accuracy
+                    profit += booking.getTotalPrice();
                 }
             }
             result.add(new ProfitResult(unit.getId(), unit.getName(), profit));
@@ -243,25 +249,30 @@ public class AccommodationUnitService {
         return result;
     }
 
+    // ✅ Enhanced monthly profit calculation - only confirmed/completed bookings, using totalPrice
     public List<MonthlyProfitResult> getMonthlyProfit(int months, User owner) {
-        List<AccommodationUnit> myUnits = accommodationUnitRepository.findByOwner(owner);
         LocalDate now = LocalDate.now();
         LocalDate fromDate = (months > 0) ? now.minusMonths(months) : LocalDate.MIN;
         Map<YearMonth, Double> profitByMonth = new TreeMap<>();
-        for (AccommodationUnit unit : myUnits) {
-            List<Booking> bookings = bookingRepository.findByAccommodationUnit(unit);
-            for (Booking booking : bookings) {
-                if ((months == 0)
-                        || (booking.getCheckInDate() != null && !booking.getCheckInDate().isBefore(fromDate))) {
-                    long nights = ChronoUnit.DAYS.between(booking.getCheckInDate(), booking.getCheckOutDate());
-                    if (nights > 0 && unit.getPricePerNight() != null) {
-                        YearMonth ym = YearMonth.from(booking.getCheckInDate());
-                        double profit = nights * unit.getPricePerNight();
-                        profitByMonth.put(ym, profitByMonth.getOrDefault(ym, 0.0) + profit);
-                    }
-                }
+        
+        // ✅ Use efficient repository method to get only confirmed/completed bookings
+        List<BookingStatus> validStatuses = List.of(BookingStatus.CONFIRMED, BookingStatus.COMPLETED);
+        List<Booking> bookings;
+        
+        if (months > 0) {
+            bookings = bookingRepository.findByOwnerAndCheckInDateBetweenAndStatusIn(owner, fromDate, now, validStatuses);
+        } else {
+            bookings = bookingRepository.findByOwnerAndStatusIn(owner, validStatuses);
+        }
+        
+        for (Booking booking : bookings) {
+            if (booking.getTotalPrice() != null && booking.getCheckInDate() != null) {
+                YearMonth ym = YearMonth.from(booking.getCheckInDate());
+                // ✅ Use totalPrice directly for accuracy
+                profitByMonth.put(ym, profitByMonth.getOrDefault(ym, 0.0) + booking.getTotalPrice());
             }
         }
+        
         List<MonthlyProfitResult> result = new ArrayList<>();
         for (Map.Entry<YearMonth, Double> entry : profitByMonth.entrySet()) {
             result.add(new MonthlyProfitResult(entry.getKey().toString(), entry.getValue()));
@@ -300,10 +311,23 @@ public class AccommodationUnitService {
     // ===== DASHBOARD METHODS =====
 
     /**
-     * Get all accommodation units owned by a specific user
+     * Get all accommodation units owned by a specific user (ordered by creation date)
      */
     public List<AccommodationUnit> getUnitsByOwner(User owner) {
-        return accommodationUnitRepository.findByOwner(owner);
+        System.out.println("=== SERVICE: GET UNITS BY OWNER ===");
+        System.out.println("Owner: " + owner.getEmail() + " (ID: " + owner.getId() + ")");
+        
+        List<AccommodationUnit> units = accommodationUnitRepository.findAllByOwnerOrdered(owner);
+        System.out.println("Found " + units.size() + " units for owner");
+        
+        // Log each unit for debugging
+        for (AccommodationUnit unit : units) {
+            System.out.println("Unit: " + unit.getId() + " - " + unit.getName() + 
+                             " (available: " + unit.isAvailable() + ", status: " + unit.getStatus() + 
+                             ", created: " + unit.getCreatedAt() + ")");
+        }
+        
+        return units;
     }
 
     /**
@@ -345,12 +369,11 @@ public class AccommodationUnitService {
                 "totalRevenue", maxRevenue);
     }
 
-    // ✅ Get profit analytics for a specific owner across different time periods
+    // ✅ Enhanced profit analytics - only confirmed/completed bookings, using totalPrice
     public Map<String, Double> getOwnerProfitAnalytics(User owner, int months) {
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusMonths(months);
 
-        List<AccommodationUnit> ownerUnits = accommodationUnitRepository.findByOwner(owner);
         Map<String, Double> monthlyProfits = new TreeMap<>();
 
         // Initialize all months with 0
@@ -360,19 +383,19 @@ public class AccommodationUnitService {
             monthlyProfits.put(monthKey, 0.0);
         }
 
-        // Calculate profits for each unit
-        for (AccommodationUnit unit : ownerUnits) {
-            List<Booking> bookings = bookingRepository.findByAccommodationUnit_IdAndCheckInDateBetween(
-                    unit.getId(), startDate, endDate);
+        // ✅ Use efficient repository method to get only confirmed/completed bookings
+        List<BookingStatus> validStatuses = List.of(BookingStatus.CONFIRMED, BookingStatus.COMPLETED);
+        List<Booking> bookings = bookingRepository.findByOwnerAndCheckInDateBetweenAndStatusIn(
+                owner, startDate, endDate, validStatuses);
 
-            for (Booking booking : bookings) {
-                if (booking.getCheckInDate() != null && booking.getTotalPrice() != null) {
-                    YearMonth bookingMonth = YearMonth.from(booking.getCheckInDate());
-                    String monthKey = bookingMonth.getYear() + "-"
-                            + String.format("%02d", bookingMonth.getMonthValue());
+        for (Booking booking : bookings) {
+            if (booking.getCheckInDate() != null && booking.getTotalPrice() != null) {
+                YearMonth bookingMonth = YearMonth.from(booking.getCheckInDate());
+                String monthKey = bookingMonth.getYear() + "-"
+                        + String.format("%02d", bookingMonth.getMonthValue());
 
-                    monthlyProfits.merge(monthKey, booking.getTotalPrice(), Double::sum);
-                }
+                // ✅ Use totalPrice directly for accuracy
+                monthlyProfits.merge(monthKey, booking.getTotalPrice(), Double::sum);
             }
         }
 
@@ -381,16 +404,14 @@ public class AccommodationUnitService {
 
     // ✅ Get total profit for owner across all time
     public Double getOwnerTotalProfit(User owner) {
-        List<AccommodationUnit> ownerUnits = accommodationUnitRepository.findByOwner(owner);
+        // ✅ Use efficient repository method to get only confirmed/completed bookings
+        List<BookingStatus> validStatuses = List.of(BookingStatus.CONFIRMED, BookingStatus.COMPLETED);
+        List<Booking> allBookings = bookingRepository.findByOwnerAndStatusIn(owner, validStatuses);
+
         double totalProfit = 0.0;
-
-        for (AccommodationUnit unit : ownerUnits) {
-            List<Booking> allBookings = bookingRepository.findByAccommodationUnit(unit);
-
-            for (Booking booking : allBookings) {
-                if (booking.getTotalPrice() != null) {
-                    totalProfit += booking.getTotalPrice();
-                }
+        for (Booking booking : allBookings) {
+            if (booking.getTotalPrice() != null) {
+                totalProfit += booking.getTotalPrice();
             }
         }
 
@@ -452,7 +473,20 @@ public class AccommodationUnitService {
         return overlappingReservations.isEmpty();
     }
 
+    @Transactional
     public AccommodationUnit addUnitWithPhotos(AccommodationUnit unit, List<String> photoUrls) {
+        System.out.println("=== SERVICE: ADD UNIT WITH PHOTOS ===");
+        System.out.println("Unit owner: " + (unit.getOwner() != null ? unit.getOwner().getId() : "null"));
+        System.out.println("Photo URLs count: " + (photoUrls != null ? photoUrls.size() : "null"));
+        
+        // Validate unit and owner
+        if (unit == null) {
+            throw new IllegalArgumentException("Accommodation unit cannot be null");
+        }
+        if (unit.getOwner() == null) {
+            throw new IllegalArgumentException("Accommodation unit must have an owner");
+        }
+        
         // Validate photos
         if (photoUrls == null || photoUrls.isEmpty()) {
             throw new IllegalArgumentException("At least one photo is required");
@@ -464,42 +498,156 @@ public class AccommodationUnitService {
         // Validate location uniqueness
         validateLocationUniqueness(unit.getLocation());
         
+        // Ensure proper defaults for new units
+        unit.setAvailable(true); // ALWAYS set available to true for new units
         unit.setCreatedAt(LocalDate.now());
-        AccommodationUnit savedUnit = accommodationUnitRepository.save(unit);
         
-        // Save photos
-        List<AccommodationPhoto> photos = new ArrayList<>();
-        for (String photoUrl : photoUrls) {
-            photos.add(new AccommodationPhoto(savedUnit.getId(), photoUrl));
+        System.out.println("Setting unit available: " + unit.isAvailable());
+        System.out.println("Setting unit status: " + unit.getStatus());
+        
+        if (unit.getStatus() == null || unit.getStatus().isEmpty()) {
+            unit.setStatus("active");
         }
-        photoService.savePhotos(photos);
+        if (unit.getRating() == null) {
+            unit.setRating(0.0);
+        }
+        if (unit.getReviewCount() == null) {
+            unit.setReviewCount(0);
+        }
+        if (unit.getTotalBookings() == null) {
+            unit.setTotalBookings(0);
+        }
+        if (unit.getMonthlyRevenue() == null) {
+            unit.setMonthlyRevenue(0.0);
+        }
+        if (unit.getImages() == null) {
+            unit.setImages(new ArrayList<>());
+        }
+        if (unit.getAmenities() == null) {
+            unit.setAmenities(new ArrayList<>());
+        }
         
+        // Explicitly set available to true for new units
+        unit.setAvailable(true);
+        
+        System.out.println("Unit before save - Status: " + unit.getStatus() + ", Available: " + unit.isAvailable());
+        System.out.println("Unit before save - Owner: " + unit.getOwner().getId() + " (" + unit.getOwner().getEmail() + ")");
+        
+        // Store photo URLs in the images field for immediate availability
+        unit.setImages(new ArrayList<>(photoUrls));
+        
+        System.out.println("Saving unit to database...");
+        AccommodationUnit savedUnit = accommodationUnitRepository.save(unit);
+        System.out.println("Unit saved with ID: " + savedUnit.getId());
+        System.out.println("Saved unit - Status: " + savedUnit.getStatus() + ", Available: " + savedUnit.isAvailable());
+        
+        // Also save to AccommodationPhoto entity for photo service compatibility
+        try {
+            List<AccommodationPhoto> photos = new ArrayList<>();
+            for (String photoUrl : photoUrls) {
+                photos.add(new AccommodationPhoto(savedUnit.getId(), photoUrl));
+            }
+            photoService.savePhotos(photos);
+            System.out.println("Photos saved to photo service successfully");
+        } catch (Exception e) {
+            // Log warning but don't fail the unit creation if photo service fails
+            System.err.println("Warning: Failed to save to photo service: " + e.getMessage());
+        }
+        
+        System.out.println("Unit creation completed successfully");
         return savedUnit;
     }
 
-    public AccommodationUnit updateUnitWithPhotos(AccommodationUnit unit, List<String> photoUrls) {
-        // Validate photos
-        if (photoUrls == null || photoUrls.isEmpty()) {
-            throw new IllegalArgumentException("At least one photo is required");
+    public AccommodationUnit updateUnitWithPhotos(AccommodationUnit unit, List<String> newPhotoUrls) {
+        // Get existing images from the unit data if provided
+        List<String> existingImages = unit.getImages() != null ? unit.getImages() : new ArrayList<>();
+        
+        // Combine existing images with new photo URLs
+        List<String> allImageUrls = new ArrayList<>(existingImages);
+        allImageUrls.addAll(newPhotoUrls);
+        
+        // Validate total image count
+        if (allImageUrls.isEmpty()) {
+            throw new IllegalArgumentException("At least one image is required");
         }
-        if (photoUrls.size() > 10) {
-            throw new IllegalArgumentException("Maximum 10 photos allowed");
+        if (allImageUrls.size() > 10) {
+            throw new IllegalArgumentException("Maximum 10 images allowed");
         }
+        
+        // Set the combined image list
+        unit.setImages(allImageUrls);
         
         // Validate location uniqueness for update
         validateLocationUniquenessForUpdate(unit.getLocation(), unit.getId());
         
         AccommodationUnit savedUnit = accommodationUnitRepository.save(unit);
         
-        // Delete existing photos and save new ones
-        photoService.deletePhotosByUnitId(unit.getId());
-        List<AccommodationPhoto> photos = new ArrayList<>();
-        for (String photoUrl : photoUrls) {
-            photos.add(new AccommodationPhoto(savedUnit.getId(), photoUrl));
+        // Also save to photo service if it exists (for backward compatibility)
+        try {
+            photoService.deletePhotosByUnitId(unit.getId());
+            List<AccommodationPhoto> photos = new ArrayList<>();
+            for (String photoUrl : allImageUrls) {
+                photos.add(new AccommodationPhoto(savedUnit.getId(), photoUrl));
+            }
+            photoService.savePhotos(photos);
+        } catch (Exception e) {
+            // Log but don't fail if photo service is unavailable
+            System.err.println("Warning: Failed to update photo service: " + e.getMessage());
         }
-        photoService.savePhotos(photos);
         
         return savedUnit;
+    }
+
+    // ✅ Generate profit report data for PDF export
+    public ProfitReportDTO generateProfitReportData(User owner, int months) {
+        // Get owner's units
+        List<AccommodationUnit> ownerUnits = accommodationUnitRepository.findByOwner(owner);
+        
+        // Calculate total profit and confirmed bookings count
+        double totalProfit = 0.0;
+        int totalConfirmedBookings = 0;
+        List<ProfitReportDTO.UnitProfitSummary> unitProfits = new ArrayList<>();
+        
+        LocalDate fromDate = (months > 0) ? LocalDate.now().minusMonths(months) : LocalDate.MIN;
+        
+        for (AccommodationUnit unit : ownerUnits) {
+            List<Booking> bookings = bookingRepository.findByAccommodationUnit(unit);
+            double unitProfit = 0.0;
+            int unitConfirmedBookings = 0;
+            
+            for (Booking booking : bookings) {
+                if ((booking.getStatus() == BookingStatus.CONFIRMED || booking.getStatus() == BookingStatus.COMPLETED) &&
+                    booking.getTotalPrice() != null &&
+                    ((months == 0) || (booking.getCheckInDate() != null && !booking.getCheckInDate().isBefore(fromDate)))) {
+                    
+                    unitProfit += booking.getTotalPrice();
+                    unitConfirmedBookings++;
+                    totalConfirmedBookings++;
+                }
+            }
+            
+            totalProfit += unitProfit;
+            unitProfits.add(new ProfitReportDTO.UnitProfitSummary(
+                unit.getName(), 
+                unit.getLocation(), 
+                unitProfit, 
+                unitConfirmedBookings
+            ));
+        }
+        
+        // Get monthly profits
+        Map<String, Double> monthlyProfits = getOwnerProfitAnalytics(owner, months > 0 ? months : 12);
+        
+        // Create and return the report DTO
+        return new ProfitReportDTO(
+            owner.getFirstName() + " " + owner.getLastName(),
+            owner.getEmail(),
+            totalProfit,
+            ownerUnits.size(),
+            totalConfirmedBookings,
+            monthlyProfits,
+            unitProfits
+        );
     }
 
     public static class ProfitResult {

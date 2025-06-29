@@ -75,11 +75,9 @@ const ProfitChart = () => {
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat('ro-RO', {
       minimumFractionDigits: 0
-    }).format(amount);
+    }).format(amount) + ' RON';
   };
 
   const formatMonth = (month) => {
@@ -211,7 +209,7 @@ const ProfitChart = () => {
             <span>{formatCurrency(maxRevenue * 0.75)}</span>
             <span>{formatCurrency(maxRevenue * 0.5)}</span>
             <span>{formatCurrency(maxRevenue * 0.25)}</span>
-            <span>$0</span>
+            <span>0 RON</span>
           </div>
         )}
       </div>

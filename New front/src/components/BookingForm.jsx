@@ -86,17 +86,21 @@ const BookingForm = ({ unitId, unitName, unitPrice, onClose, onBookingCreated })
     try {
       const bookingData = {
         accommodationUnitId: unitId,
-        guestName: formData.guestName,
-        guestEmail: formData.guestEmail,
-        guestPhone: formData.guestPhone,
+        guestName: formData.guestName.trim(),
+        guestEmail: formData.guestEmail.trim(),
+        guestPhone: formData.guestPhone?.trim() || null,
         checkInDate: formData.checkInDate,
         checkOutDate: formData.checkOutDate,
         numberOfGuests: parseInt(formData.numberOfGuests),
-        specialRequests: formData.specialRequests,
+        specialRequests: formData.specialRequests?.trim() || null,
         totalPrice: totalPrice
       };
 
+      console.log('🔵 Sending booking request:', bookingData);
+      
       const response = await api.post('/api/bookings', bookingData);
+      
+      console.log('✅ Booking response:', response.data);
       
       success('Booking Created', `Booking for ${unitName} has been successfully created`);
       
@@ -108,7 +112,22 @@ const BookingForm = ({ unitId, unitName, unitPrice, onClose, onBookingCreated })
         onClose();
       }
     } catch (error) {
-      showError('Booking Failed', error.response?.data?.message || 'Could not create the booking');
+      console.error('❌ Booking error:', error);
+      console.error('❌ Error response:', error.response?.data);
+      
+      // Enhanced error message handling
+      let errorMessage = 'Could not create the booking';
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+      
+      showError('Booking Failed', errorMessage);
     } finally {
       setLoading(false);
     }

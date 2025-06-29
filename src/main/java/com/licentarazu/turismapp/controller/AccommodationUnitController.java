@@ -15,8 +15,11 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.ContentDisposition;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -34,7 +37,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.licentarazu.turismapp.dto.AccommodationUnitDTO;
 import com.licentarazu.turismapp.dto.AccommodationUnitWithPhotosDTO;
+import com.licentarazu.turismapp.dto.ProfitReportDTO;
 import com.licentarazu.turismapp.model.AccommodationPhoto;
 import com.licentarazu.turismapp.model.AccommodationUnit;
 import com.licentarazu.turismapp.model.User;
@@ -42,6 +47,8 @@ import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
 import com.licentarazu.turismapp.repository.UserRepository;
 import com.licentarazu.turismapp.service.AccommodationPhotoService;
 import com.licentarazu.turismapp.service.AccommodationUnitService;
+import com.licentarazu.turismapp.service.PdfReportService;
+import com.licentarazu.turismapp.util.AccommodationUnitMapper;
 
 @RestController
 @RequestMapping("/api/units")
@@ -54,16 +61,19 @@ public class AccommodationUnitController {
     private final UserRepository userRepository;
     private final AccommodationUnitRepository unitRepository;
     private final AccommodationPhotoService photoService;
+    private final PdfReportService pdfReportService;
 
     @Autowired
     public AccommodationUnitController(AccommodationUnitService unitService,
             UserRepository userRepository,
             AccommodationUnitRepository unitRepository,
-            AccommodationPhotoService photoService) {
+            AccommodationPhotoService photoService,
+            PdfReportService pdfReportService) {
         this.unitService = unitService;
         this.userRepository = userRepository;
         this.unitRepository = unitRepository;
         this.photoService = photoService;
+        this.pdfReportService = pdfReportService;
     }
 
     // ✅ Enhanced unit creation with authentication, ownership, and location
@@ -221,13 +231,23 @@ public class AccommodationUnitController {
 
     // ✅ Returnează doar unitățile deținute de utilizatorul logat
     @GetMapping("/my-units")
-    public ResponseEntity<List<AccommodationUnit>> getMyUnits(Authentication authentication) {
+    public ResponseEntity<List<AccommodationUnitDTO>> getMyUnits(Authentication authentication) {
+        System.out.println("=== MY UNITS REQUEST ===");
         String email = authentication.getName(); // JWT conține emailul
+        System.out.println("User email: " + email);
+        
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        System.out.println("User found: " + user.getId());
 
-        List<AccommodationUnit> myUnits = unitRepository.findByOwner(user);
-        return ResponseEntity.ok(myUnits);
+        List<AccommodationUnit> myUnits = unitService.getUnitsByOwner(user);
+        System.out.println("Found " + myUnits.size() + " units for user");
+        
+        // Convert entities to DTOs to prevent circular references
+        List<AccommodationUnitDTO> unitDTOs = AccommodationUnitMapper.toDTOList(myUnits);
+        System.out.println("Returning " + unitDTOs.size() + " units as DTOs");
+        
+        return ResponseEntity.ok(unitDTOs);
     }
 
     // Profit generat de unitățile deținute de utilizatorul logat
@@ -276,7 +296,7 @@ public class AccommodationUnitController {
 
     // ✅ Public endpoint for unit search and filtering (used by UnitsListPage.jsx)
     @GetMapping("/public")
-    public ResponseEntity<List<AccommodationUnit>> getPublicUnits(
+    public ResponseEntity<List<AccommodationUnitDTO>> getPublicUnits(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String location,
             @RequestParam(required = false) String county,
@@ -288,21 +308,36 @@ public class AccommodationUnitController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
 
-        // Use county filter if provided, otherwise use location
-        String filterLocation = county != null ? county : location;
-        if (search != null && !search.isEmpty() && filterLocation == null) {
-            filterLocation = search;
-        }
+        System.out.println("=== PUBLIC UNITS REQUEST ===");
+        System.out.println("Search: " + search + ", County: " + county + ", Type: " + type);
+        System.out.println("Price range: " + minPrice + " - " + maxPrice);
+        
+        List<AccommodationUnit> units;
+        
+        // If no filters are provided, get ALL active units
+        if (isNoFiltersProvided(search, location, county, type, minPrice, maxPrice, capacity, checkIn, checkOut)) {
+            System.out.println("No filters provided, getting all active and available units");
+            units = unitRepository.findAllActiveAndAvailable();
+            System.out.println("Found " + units.size() + " active units");
+        } else {
+            // Use county filter if provided, otherwise use location
+            String filterLocation = county != null ? county : location;
+            if (search != null && !search.isEmpty() && filterLocation == null) {
+                filterLocation = search;
+            }
 
-        List<AccommodationUnit> units = unitService.getFilteredUnits(
-                filterLocation,
-                minPrice,
-                maxPrice,
-                capacity,
-                null, // maxCapacity not needed for this endpoint
-                type, // ✅ Added type filtering
-                null // minRating not needed
-        );
+            units = unitService.getFilteredUnits(
+                    filterLocation,
+                    minPrice,
+                    maxPrice,
+                    capacity,
+                    null, // maxCapacity not needed for this endpoint
+                    type, // ✅ Added type filtering
+                    null // minRating not needed
+            );
+        }
+        
+        System.out.println("Initial units count: " + units.size());
 
         // If search term is provided, further filter by name/description
         if (search != null && !search.isEmpty()) {
@@ -349,7 +384,11 @@ public class AccommodationUnitController {
             units = unitService.filterUnitsByAvailability(units, checkIn, checkOut);
         }
 
-        return ResponseEntity.ok(units);
+        // Convert entities to DTOs to prevent circular references
+        List<AccommodationUnitDTO> unitDTOs = AccommodationUnitMapper.toDTOList(units);
+        System.out.println("Returning " + unitDTOs.size() + " units as DTOs");
+        
+        return ResponseEntity.ok(unitDTOs);
     }
 
     // ✅ Update unit status (for owners)
@@ -508,35 +547,68 @@ public class AccommodationUnitController {
             @RequestParam("unit") String unitJson,
             @RequestParam("photos") MultipartFile[] photos,
             Authentication authentication) {
+        
+        System.out.println("=== ADD UNIT WITH PHOTOS REQUEST ===");
+        System.out.println("Authentication: " + (authentication != null ? authentication.getName() : "null"));
+        System.out.println("Unit JSON length: " + (unitJson != null ? unitJson.length() : "null"));
+        System.out.println("Photos count: " + (photos != null ? photos.length : "null"));
+        
         try {
             String email = authentication.getName();
+            System.out.println("User email: " + email);
+            
             User owner = userRepository.findByEmail(email)
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+            System.out.println("User found: " + owner.getId());
 
             // Parse unit JSON
             ObjectMapper mapper = new ObjectMapper();
+            System.out.println("Parsing unit JSON...");
             AccommodationUnit unit = mapper.readValue(unitJson, AccommodationUnit.class);
             unit.setOwner(owner);
+            System.out.println("Unit parsed successfully: " + unit.getName());
 
             // Validate photos
-            if (photos.length == 0) {
+            if (photos == null || photos.length == 0) {
+                System.out.println("ERROR: No photos provided");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body("At least one photo is required");
             }
             if (photos.length > 10) {
+                System.out.println("ERROR: Too many photos: " + photos.length);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body("Maximum 10 photos allowed");
             }
+            System.out.println("Photos validation passed: " + photos.length + " photos");
 
             // Save photos and get URLs
+            System.out.println("Saving photo files...");
             List<String> photoUrls = savePhotoFiles(photos);
+            System.out.println("Photo files saved: " + photoUrls.size() + " URLs");
 
+            System.out.println("Calling service to save unit...");
             AccommodationUnit savedUnit = unitService.addUnitWithPhotos(unit, photoUrls);
-            return ResponseEntity.status(HttpStatus.CREATED).body(savedUnit);
+            System.out.println("Unit saved successfully with ID: " + savedUnit.getId());
+            
+            // Create a detailed response object
+            Map<String, Object> response = new HashMap<>();
+            response.put("unit", savedUnit);
+            response.put("message", "Property created successfully");
+            response.put("unitId", savedUnit.getId());
+            response.put("ownerEmail", savedUnit.getOwner().getEmail());
+            response.put("imageCount", photoUrls.size());
+            response.put("createdAt", savedUnit.getCreatedAt());
+            
+            System.out.println("Returning response with unit ID: " + savedUnit.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (IllegalStateException | IllegalArgumentException e) {
+            System.out.println("ERROR - IllegalStateException/IllegalArgumentException: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
+            System.out.println("ERROR - Unexpected exception: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to create unit: " + e.getMessage());
         }
@@ -570,14 +642,18 @@ public class AccommodationUnitController {
             updatedUnit.setId(id);
             updatedUnit.setOwner(user);
 
-            // Validate photos
-            if (photos.length == 0) {
+            // Calculate total images after adding new photos
+            List<String> existingImages = updatedUnit.getImages() != null ? updatedUnit.getImages() : new ArrayList<>();
+            int totalImages = existingImages.size() + photos.length;
+            
+            // Validate total image count
+            if (totalImages == 0) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("At least one photo is required");
+                        .body("At least one image is required");
             }
-            if (photos.length > 10) {
+            if (totalImages > 10) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Maximum 10 photos allowed");
+                        .body("Maximum 10 images allowed total");
             }
 
             // Save photos and get URLs
@@ -605,6 +681,55 @@ public class AccommodationUnitController {
         }
     }
 
+    // ✅ Export profit report as PDF
+    @GetMapping("/my-units/profit/export-pdf")
+    public ResponseEntity<byte[]> exportProfitReportPdf(
+            @RequestParam(defaultValue = "12") int months,
+            Authentication authentication) {
+        try {
+            String email = authentication.getName();
+            User owner = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            // Generate profit report data
+            ProfitReportDTO reportData = unitService.generateProfitReportData(owner, months);
+            
+            // Generate PDF
+            byte[] pdfBytes = pdfReportService.generateProfitReportPdf(reportData);
+            
+            // Set response headers
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDisposition(ContentDisposition.builder("attachment")
+                    .filename("profit-report-" + owner.getFirstName() + "-" + LocalDate.now() + ".pdf")
+                    .build());
+            headers.setContentLength(pdfBytes.length);
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(pdfBytes);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(("Error generating PDF report: " + e.getMessage()).getBytes());
+        }
+    }
+
+    // Helper method to check if no filters are provided
+    private boolean isNoFiltersProvided(String search, String location, String county, String type, 
+                                      Double minPrice, Double maxPrice, Integer capacity, 
+                                      LocalDate checkIn, LocalDate checkOut) {
+        return (search == null || search.isEmpty()) &&
+               (location == null || location.isEmpty()) &&
+               (county == null || county.isEmpty()) &&
+               (type == null || type.isEmpty()) &&
+               minPrice == null &&
+               maxPrice == null &&
+               capacity == null &&
+               checkIn == null &&
+               checkOut == null;
+    }
+
     // Helper method to save photo files and return their URLs
     private List<String> savePhotoFiles(MultipartFile[] photos) throws IOException {
         List<String> photoUrls = new ArrayList<>();
@@ -617,8 +742,8 @@ public class AccommodationUnitController {
         }
 
         for (MultipartFile photo : photos) {
-            if (!photo.isEmpty() && photo.getOriginalFilename() != null) {
-                String originalFilename = photo.getOriginalFilename();
+            String originalFilename = photo.getOriginalFilename();
+            if (!photo.isEmpty() && originalFilename != null && !originalFilename.isEmpty()) {
                 String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
                 String filename = UUID.randomUUID().toString() + fileExtension;
                 

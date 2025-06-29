@@ -82,7 +82,20 @@ const UnitsListPage = () => {
 
   useEffect(() => {
     fetchUnits();
-  }, [searchQuery, filters]); // Removed sortBy since we handle it separately for better performance
+    
+    // Auto-refresh when returning to browse page if new units were added
+    const handleFocus = () => {
+      if (typeof Storage !== 'undefined' && localStorage.getItem('shouldRefreshUnits') === 'true') {
+        localStorage.removeItem('shouldRefreshUnits');
+        setTimeout(() => {
+          fetchUnits();
+        }, 500);
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [filters]); // Removed searchQuery from dependency array - search now only triggers on form submit
 
   const fetchUnits = async () => {
     try {
@@ -110,28 +123,31 @@ const UnitsListPage = () => {
       
       const response = await api.get(url);
       console.log('📦 Response received:', response.data);
-      console.log('📊 Units count:', response.data.length);
+      console.log('📊 Units count:', response.data ? response.data.length : 'null/undefined');
+      
+      // Ensure response.data is always an array
+      const responseData = Array.isArray(response.data) ? response.data : [];
       
       // ✅ Apply sorting to the fetched units
-      const sortedUnits = sortUnits(response.data, sortBy);
+      const sortedUnits = sortUnits(responseData, sortBy);
       setUnits(sortedUnits);
       
       // ✅ Improved notification logic - prevent stacking and show relevant messages only
-      if (response.data.length > 0) {
+      if (responseData.length > 0) {
         // ✅ Units found - clear any error toasts and show success only when meaningful
         clearToastsByType('error');
-        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f);
+        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f && f.length > 0);
         if (hasActiveFilters) {
-          success('Units Found', `Found ${response.data.length} matching accommodation${response.data.length > 1 ? 's' : ''}`);
+          success('Units Found', `Found ${responseData.length} matching accommodation${responseData.length > 1 ? 's' : ''}`);
         }
       } else {
         // ✅ No units found - clear success toasts and show appropriate error
         clearToastsByType('success');
-        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f);
+        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f && f.length > 0);
         if (hasActiveFilters) {
           showError('No Matching Units', 'No accommodations match your search criteria. Try adjusting your filters or search terms.');
         } else {
-          showError('No Units Available', 'No accommodation units are currently available in the database.');
+          console.log('No units found, but no filters applied - this might be a database/backend issue');
         }
       }
     } catch (error) {
@@ -158,8 +174,9 @@ const UnitsListPage = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    // TODO: Implement search functionality
+    // Update URL search params and trigger fetchUnits
     setSearchParams({ search: searchQuery });
+    fetchUnits();
   };
 
   const getAmenityIcon = (amenity) => {
@@ -193,7 +210,6 @@ const UnitsListPage = () => {
   const formatPrice = (unit) => {
     // Try different possible price field names for backwards compatibility
     const price = unit.pricePerNight || unit.price || 0;
-    const currency = unit.currency || 'RON';
     
     // Handle zero or null prices
     if (!price || price === 0) {
@@ -202,45 +218,84 @@ const UnitsListPage = () => {
     
     // Format number with proper thousand separators for Romanian locale
     const formattedPrice = new Intl.NumberFormat('ro-RO', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(price);
     
-    return `${formattedPrice} ${currency}/night`;
+    return `${formattedPrice} RON/night`;
   };
 
-  const UnitCard = ({ unit }) => (
-    <GlassCard className="overflow-hidden hover:bg-white/15 transition-all duration-300 group">
-      {/* Image */}
-      <div className="relative h-48 bg-gradient-to-r from-violet-500 to-purple-600 overflow-hidden">
-        <div className="absolute inset-0 bg-black/20"></div>
-        <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg">
-          <span className="text-white font-bold text-sm whitespace-nowrap">
-            {formatPrice(unit)}
-          </span>
-        </div>
-        <div className="absolute bottom-4 left-4">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-xl font-bold text-white">{unit.name}</h3>
-            {unit.type && (
-              <span className="px-2 py-1 text-xs font-medium bg-violet-500/80 text-white rounded-full backdrop-blur-sm">
-                {getTypeLabel(unit.type)}
-              </span>
-            )}
-          </div>
-          <div className="text-violet-200 text-sm">
-            <div className="flex items-center gap-1">
-              <MapPin className="w-4 h-4" />
-              {unit.location}
-            </div>
-            {unit.county && (
-              <div className="text-xs text-violet-300 mt-1">
-                {unit.county}
+  // Helper function to get the first available image
+  const getUnitImage = (unit) => {
+    // First try photoUrls from DTO
+    if (unit.photoUrls && unit.photoUrls.length > 0) {
+      return unit.photoUrls[0];
+    }
+    
+    // Fallback to images array (old format or alternative field)
+    if (unit.images && unit.images.length > 0) {
+      // Handle both string URLs and objects with url property
+      const firstImage = unit.images[0];
+      return typeof firstImage === 'string' ? firstImage : firstImage?.url;
+    }
+    
+    // Return null for placeholder
+    return null;
+  };
+
+  const UnitCard = ({ unit }) => {
+    const unitImage = getUnitImage(unit);
+    
+    return (
+      <GlassCard className="overflow-hidden hover:bg-white/15 transition-all duration-300 group">
+        {/* Image */}
+        <div className="relative h-48 bg-gradient-to-r from-violet-500 to-purple-600 overflow-hidden">
+          {unitImage ? (
+            <img 
+              src={unitImage} 
+              alt={unit.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                // Fallback to gradient background if image fails to load
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-white/70 text-center">
+                <div className="text-4xl mb-2">🏠</div>
+                <div className="text-sm">No Image Available</div>
               </div>
-            )}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/20"></div>
+          <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg">
+            <span className="text-white font-bold text-sm whitespace-nowrap">
+              {formatPrice(unit)}
+            </span>
+          </div>
+          <div className="absolute bottom-4 left-4">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-bold text-white">{unit.name}</h3>
+              {unit.type && (
+                <span className="px-2 py-1 text-xs font-medium bg-violet-500/80 text-white rounded-full backdrop-blur-sm">
+                  {getTypeLabel(unit.type)}
+                </span>
+              )}
+            </div>
+            <div className="text-violet-200 text-sm">
+              <div className="flex items-center gap-1">
+                <MapPin className="w-4 h-4" />
+                {unit.location}
+              </div>
+              {unit.county && (
+                <div className="text-xs text-violet-300 mt-1">
+                  {unit.county}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Content */}
       <div className="p-6">
@@ -293,7 +348,8 @@ const UnitsListPage = () => {
         </div>
       </div>
     </GlassCard>
-  );
+    );
+  };
 
   // ✅ Date validation helper
   const validateDates = (checkIn, checkOut) => {

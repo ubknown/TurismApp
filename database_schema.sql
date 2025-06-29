@@ -105,6 +105,8 @@ CREATE TABLE accommodation_units (
     name VARCHAR(255) NOT NULL,
     description TEXT(1000) NULL,
     location VARCHAR(255) NULL,
+    county VARCHAR(255) NULL COMMENT 'County/Județ field',
+    phone VARCHAR(50) NULL COMMENT 'Contact phone number',
     latitude DOUBLE NULL,
     longitude DOUBLE NULL,
     price_per_night DOUBLE NOT NULL,

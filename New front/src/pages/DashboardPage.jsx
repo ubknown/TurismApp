@@ -14,6 +14,8 @@ import {
 import GlassCard from '../components/GlassCard';
 import PrimaryButton from '../components/PrimaryButton';
 import ProfitChart from '../components/ProfitChart';
+import MonthlyProfitChart from '../components/MonthlyProfitChart';
+import ProfitPdfExport from '../components/ProfitPdfExport';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/axios';
@@ -122,11 +124,11 @@ const DashboardPage = () => {
         {/* Quick Actions */}
         <div className="flex flex-wrap gap-4 mb-8">
           <PrimaryButton
-            onClick={() => navigate('/my-units')}
+            onClick={() => navigate('/add-property')}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Add New Unit
+            Add New Property
           </PrimaryButton>
           <PrimaryButton
             onClick={() => navigate('/bookings')}
@@ -164,7 +166,7 @@ const DashboardPage = () => {
           />
           <StatCard
             title="Total Revenue"
-            value={`$${dashboardData.monthlyRevenue.toLocaleString()}`}
+            value={`${dashboardData.monthlyRevenue.toLocaleString()} RON`}
             subtitle="All time earnings"
             icon={DollarSign}
             color="green"
@@ -267,7 +269,7 @@ const DashboardPage = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-green-400">${unit.revenue.toLocaleString()}</p>
+                      <p className="font-bold text-green-400">{unit.revenue ? `${unit.revenue.toLocaleString()} RON` : '0 RON'}</p>
                     </div>
                   </div>
                 ))
@@ -282,9 +284,21 @@ const DashboardPage = () => {
           </GlassCard>
         </div>
 
-        {/* Profit Chart */}
-        <div className="mt-8">
-          <ProfitChart />
+        {/* Enhanced Profit Analytics */}
+        <div className="mt-8 space-y-6">
+          {/* PDF Export Section */}
+          <GlassCard className="p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white mb-2">Profit Reports</h2>
+                <p className="text-violet-200">Export detailed profit analytics and generate monthly reports</p>
+              </div>
+              <ProfitPdfExport />
+            </div>
+          </GlassCard>
+
+          {/* Monthly Profit Chart */}
+          <MonthlyProfitChart />
         </div>
       </div>
     </div>

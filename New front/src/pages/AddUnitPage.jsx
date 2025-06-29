@@ -21,6 +21,7 @@ import GlassCard from '../components/GlassCard';
 import PrimaryButton from '../components/PrimaryButton';
 import CountyDropdown from '../components/CountyDropdown';
 import TypeDropdown from '../components/TypeDropdown';
+import LocationImageGallery from '../components/LocationImageGallery';
 import { useToast } from '../context/ToastContext';
 import api from '../services/axios';
 
@@ -39,8 +40,7 @@ const AddUnitPage = () => {
     type: 'HOTEL' // Default type
   });
   
-  const [photos, setPhotos] = useState([]);
-  const [photoPreviews, setPhotoPreviews] = useState([]);
+  const [locationImages, setLocationImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -80,59 +80,11 @@ const AddUnitPage = () => {
     }));
   };
 
-  const handlePhotoChange = (e) => {
-    const files = Array.from(e.target.files);
-    
-    // Validate number of files
-    if (files.length === 0) {
-      setErrors(prev => ({ ...prev, photos: 'At least one photo is required' }));
-      return;
-    }
-    
-    if (files.length > 10) {
-      setErrors(prev => ({ ...prev, photos: 'Maximum 10 photos allowed' }));
-      return;
-    }
-    
-    // Validate file types
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    const invalidFiles = files.filter(file => !validTypes.includes(file.type));
-    if (invalidFiles.length > 0) {
-      setErrors(prev => ({ ...prev, photos: 'Only JPEG, PNG, and WebP images are allowed' }));
-      return;
-    }
-    
-    // Validate file sizes (5MB max each)
-    const oversizedFiles = files.filter(file => file.size > 5 * 1024 * 1024);
-    if (oversizedFiles.length > 0) {
-      setErrors(prev => ({ ...prev, photos: 'Each photo must be less than 5MB' }));
-      return;
-    }
-    
-    setPhotos(files);
-    setErrors(prev => ({ ...prev, photos: '' }));
-    
-    // Create previews
-    const previews = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.readAsDataURL(file);
-      });
-    });
-    
-    Promise.all(previews).then(setPhotoPreviews);
-  };
-
-  const removePhoto = (index) => {
-    const newPhotos = photos.filter((_, i) => i !== index);
-    const newPreviews = photoPreviews.filter((_, i) => i !== index);
-    
-    setPhotos(newPhotos);
-    setPhotoPreviews(newPreviews);
-    
-    if (newPhotos.length === 0) {
-      setErrors(prev => ({ ...prev, photos: 'At least one photo is required' }));
+  const handleLocationImagesChange = (images) => {
+    setLocationImages(images);
+    // Clear image validation errors when images are added
+    if (images.length > 0 && errors.images) {
+      setErrors(prev => ({ ...prev, images: '' }));
     }
   };
 
@@ -167,11 +119,11 @@ const AddUnitPage = () => {
       newErrors.pricePerNight = 'Price per night must be a positive number';
     }
 
-    // Validate photos
-    if (photos.length === 0) {
-      newErrors.photos = 'At least one photo is required';
-    } else if (photos.length > 5) {
-      newErrors.photos = 'You can upload a maximum of 5 photos';
+    // Validate images
+    if (locationImages.length === 0) {
+      newErrors.images = 'At least one image is required';
+    } else if (locationImages.length > 10) {
+      newErrors.images = 'You can upload a maximum of 10 images';
     }
 
     setErrors(newErrors);
@@ -186,10 +138,10 @@ const AddUnitPage = () => {
       return;
     }
 
-    // Validate photos
-    if (photos.length === 0) {
-      setErrors(prev => ({ ...prev, photos: 'At least one photo is required' }));
-      showError('Validation Error', 'Please add at least one photo');
+    // Validate images
+    if (locationImages.length === 0) {
+      setErrors(prev => ({ ...prev, images: 'At least one image is required' }));
+      showError('Validation Error', 'Please add at least one image');
       return;
     }
 
@@ -211,9 +163,12 @@ const AddUnitPage = () => {
       const formDataToSend = new FormData();
       formDataToSend.append('unit', JSON.stringify(submitData));
       
-      // Add photos
-      photos.forEach((photo, index) => {
-        formDataToSend.append('photos', photo);
+      // Add images from LocationImageGallery
+      locationImages.forEach((image, index) => {
+        if (image.file) {
+          // New file to upload
+          formDataToSend.append('photos', image.file);
+        }
       });
 
       const response = await api.post('/api/units/with-photos', formDataToSend, {
@@ -452,72 +407,19 @@ const AddUnitPage = () => {
               </div>
             </div>
 
-            {/* Photo Upload */}
+            {/* Location Images */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Photos * (1-10 photos)
+              <label className="block text-sm font-medium text-white mb-4">
+                Location Images * (1-10 images)
               </label>
-              <input
-                type="file"
-                multiple
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                onChange={handlePhotoChange}
-                disabled={loading}
-                className="hidden"
-                id="photo-upload"
+              <LocationImageGallery
+                images={locationImages}
+                onImagesChange={handleLocationImagesChange}
+                maxImages={10}
+                isEditing={true}
               />
-              <label
-                htmlFor="photo-upload"
-                className={`w-full min-h-[120px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
-                  errors.photos 
-                    ? 'border-red-500/50 bg-red-500/5' 
-                    : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-violet-500/50'
-                }`}
-              >
-                <div className="text-center p-6">
-                  <div className="w-16 h-16 bg-violet-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-white font-medium mb-1">
-                    Click to upload photos
-                  </p>
-                  <p className="text-white/70 text-sm">
-                    JPEG, PNG, WebP • Max 5MB each • 1-10 photos
-                  </p>
-                </div>
-              </label>
-
-              {/* Photo Previews */}
-              {photoPreviews.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {photoPreviews.map((preview, index) => (
-                    <div key={index} className="relative group">
-                      <img
-                        src={preview}
-                        alt={`Preview ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(index)}
-                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                      >
-                        ×
-                      </button>
-                      {index === 0 && (
-                        <div className="absolute bottom-1 left-1 bg-violet-500 text-white text-xs px-2 py-1 rounded">
-                          Main
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {errors.photos && (
-                <p className="text-red-400 text-sm mt-2">{errors.photos}</p>
+              {errors.images && (
+                <p className="text-red-400 text-sm mt-2">{errors.images}</p>
               )}
             </div>
 

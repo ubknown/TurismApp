@@ -3,6 +3,8 @@ package com.licentarazu.turismapp.controller;
 import com.licentarazu.turismapp.model.Booking;
 import com.licentarazu.turismapp.model.User;
 import com.licentarazu.turismapp.model.AccommodationUnit;
+import com.licentarazu.turismapp.model.BookingStatus;
+import com.licentarazu.turismapp.dto.BookingRequestDTO;
 import com.licentarazu.turismapp.service.BookingService;
 import com.licentarazu.turismapp.repository.UserRepository;
 import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
@@ -11,6 +13,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -21,6 +27,8 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5174"}, 
              allowCredentials = "true")
 public class BookingController {
+
+    private static final Logger logger = LoggerFactory.getLogger(BookingController.class);
 
     private final BookingService bookingService;
     private final UserRepository userRepository;
@@ -34,77 +42,99 @@ public class BookingController {
         this.unitRepository = unitRepository;
     }
 
-    // ✅ Enhanced booking creation with email notifications
+    // ✅ Enhanced booking creation with proper DTO handling and debug logging
     @PostMapping
-    public ResponseEntity<?> createBooking(@RequestBody Booking booking) {
+    public ResponseEntity<?> createBooking(@Validated @RequestBody BookingRequestDTO bookingRequest, 
+                                         BindingResult bindingResult) {
         try {
-            // ✅ CRITICAL FIX: Enhanced validation for security and data integrity
+            logger.info("🔵 Received booking request: {}", bookingRequest.toString());
             
-            // Validate required fields
-            if (booking.getAccommodationUnit() == null || booking.getAccommodationUnit().getId() == null) {
-                return ResponseEntity.badRequest().body("Accommodation unit is required");
+            // Check for validation errors
+            if (bindingResult.hasErrors()) {
+                StringBuilder errorMessage = new StringBuilder("Validation errors: ");
+                bindingResult.getFieldErrors().forEach(error -> 
+                    errorMessage.append(error.getField()).append(" - ").append(error.getDefaultMessage()).append("; ")
+                );
+                logger.error("❌ Validation errors: {}", errorMessage.toString());
+                return ResponseEntity.badRequest().body(errorMessage.toString());
             }
 
-            if (booking.getCheckInDate() == null || booking.getCheckOutDate() == null) {
-                return ResponseEntity.badRequest().body("Check-in and check-out dates are required");
-            }
-
-            if (booking.getGuestEmail() == null || booking.getGuestEmail().isEmpty()) {
-                return ResponseEntity.badRequest().body("Guest email is required");
-            }
-
-            // ✅ CRITICAL FIX: Validate dates are not in the past
-            if (booking.getCheckInDate().isBefore(java.time.LocalDate.now())) {
+            // ✅ Additional date validations
+            if (bookingRequest.getCheckInDate().isBefore(java.time.LocalDate.now())) {
+                logger.error("❌ Check-in date is in the past: {}", bookingRequest.getCheckInDate());
                 return ResponseEntity.badRequest().body("Check-in date cannot be in the past");
             }
 
-            if (booking.getCheckOutDate().isBefore(java.time.LocalDate.now())) {
+            if (bookingRequest.getCheckOutDate().isBefore(java.time.LocalDate.now())) {
+                logger.error("❌ Check-out date is in the past: {}", bookingRequest.getCheckOutDate());
                 return ResponseEntity.badRequest().body("Check-out date cannot be in the past");
             }
 
-            if (booking.getCheckInDate().isAfter(booking.getCheckOutDate()) || 
-                booking.getCheckInDate().equals(booking.getCheckOutDate())) {
+            if (bookingRequest.getCheckInDate().isAfter(bookingRequest.getCheckOutDate()) || 
+                bookingRequest.getCheckInDate().equals(bookingRequest.getCheckOutDate())) {
+                logger.error("❌ Invalid date range: checkIn={}, checkOut={}", 
+                           bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
                 return ResponseEntity.badRequest().body("Check-in date must be before check-out date");
             }
 
             // Fetch the complete accommodation unit with owner information
-            AccommodationUnit unit = unitRepository.findById(booking.getAccommodationUnit().getId())
-                    .orElseThrow(() -> new RuntimeException("Accommodation unit not found"));
-            booking.setAccommodationUnit(unit);
+            AccommodationUnit unit = unitRepository.findById(bookingRequest.getAccommodationUnitId())
+                    .orElseThrow(() -> new RuntimeException("Accommodation unit not found with ID: " + bookingRequest.getAccommodationUnitId()));
+            
+            logger.info("✅ Found accommodation unit: {} (ID: {})", unit.getName(), unit.getId());
 
-            // ✅ CRITICAL FIX: Server-side price calculation and validation
+            // ✅ Server-side price calculation and validation
             long nights = java.time.temporal.ChronoUnit.DAYS.between(
-                    booking.getCheckInDate(), booking.getCheckOutDate());
+                    bookingRequest.getCheckInDate(), bookingRequest.getCheckOutDate());
             double serverCalculatedPrice = nights * unit.getPricePerNight();
             
+            logger.info("💰 Price calculation: {} nights × {} RON = {} RON", 
+                       nights, unit.getPricePerNight(), serverCalculatedPrice);
+            
             // If client provided a price, validate it matches server calculation
-            if (booking.getTotalPrice() != null) {
-                double clientPrice = booking.getTotalPrice();
+            if (bookingRequest.getTotalPrice() != null) {
+                double clientPrice = bookingRequest.getTotalPrice();
                 double tolerance = 0.01; // Allow small floating point differences
                 
                 if (Math.abs(clientPrice - serverCalculatedPrice) > tolerance) {
+                    logger.error("❌ Price mismatch: expected={}, received={}", 
+                               serverCalculatedPrice, clientPrice);
                     return ResponseEntity.badRequest().body(
                         String.format("Price mismatch. Expected: %.2f RON, Received: %.2f RON", 
                                      serverCalculatedPrice, clientPrice));
                 }
             }
-            
-            // Always use server-calculated price for security
-            booking.setTotalPrice(serverCalculatedPrice);
+
+            // ✅ Create Booking entity from DTO
+            Booking booking = new Booking();
+            booking.setAccommodationUnit(unit);
+            booking.setGuestName(bookingRequest.getGuestName());
+            booking.setGuestEmail(bookingRequest.getGuestEmail());
+            booking.setGuestPhone(bookingRequest.getGuestPhone());
+            booking.setCheckInDate(bookingRequest.getCheckInDate());
+            booking.setCheckOutDate(bookingRequest.getCheckOutDate());
+            booking.setNumberOfGuests(bookingRequest.getNumberOfGuests());
+            booking.setSpecialRequests(bookingRequest.getSpecialRequests());
+            booking.setTotalPrice(serverCalculatedPrice); // Always use server-calculated price
+            booking.setStatus(BookingStatus.CONFIRMED); // Set initial status
+
+            logger.info("🔄 Creating booking with status: {}", booking.getStatus());
 
             // Create booking with email notifications
             Booking savedBooking = bookingService.createBookingWithEmailNotifications(booking);
+            
+            logger.info("✅ Booking created successfully with ID: {}", savedBooking.getId());
 
             return ResponseEntity.ok(Map.of(
                     "message", "Booking created successfully! Confirmation emails have been sent.",
                     "bookingId", savedBooking.getId(),
                     "totalPrice", savedBooking.getTotalPrice()));
 
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.error("❌ Business logic error: {}", e.getMessage());
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
+            logger.error("❌ Unexpected error creating booking: ", e);
             return ResponseEntity.status(500).body("An error occurred while creating the booking: " + e.getMessage());
         }
     }

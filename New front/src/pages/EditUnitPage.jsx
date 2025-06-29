@@ -21,6 +21,7 @@ import GlassCard from '../components/GlassCard';
 import PrimaryButton from '../components/PrimaryButton';
 import CountyDropdown from '../components/CountyDropdown';
 import TypeDropdown from '../components/TypeDropdown';
+import LocationImageGallery from '../components/LocationImageGallery';
 import { useToast } from '../context/ToastContext';
 import api from '../services/axios';
 
@@ -41,9 +42,7 @@ const EditUnitPage = () => {
     status: 'active'
   });
   
-  const [photos, setPhotos] = useState([]);
-  const [photoPreviews, setPhotoPreviews] = useState([]);
-  const [existingPhotos, setExistingPhotos] = useState([]);
+  const [locationImages, setLocationImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [errors, setErrors] = useState({});
@@ -86,8 +85,13 @@ const EditUnitPage = () => {
         status: unit.status || 'active'
       });
 
-      // Set existing photos for preview
-      setExistingPhotos(unit.photos || []);
+      // Set existing images for LocationImageGallery
+      const existingImages = (unit.photos || unit.images || []).map((imageUrl, index) => ({
+        id: `existing-${index}`,
+        url: imageUrl,
+        isNew: false
+      }));
+      setLocationImages(existingImages);
     } catch (error) {
       if (error.response?.status === 403) {
         showError('Access Denied', 'You do not have permission to edit this unit');
@@ -128,19 +132,12 @@ const EditUnitPage = () => {
     }));
   };
 
-  const handlePhotoChange = (e) => {
-    const files = Array.from(e.target.files);
-    setPhotos(files);
-
-    // Create image previews
-    const previews = files.map(file => URL.createObjectURL(file));
-    setPhotoPreviews(previews);
-
-    // Clear photo-related errors
-    setErrors(prev => ({
-      ...prev,
-      photos: ''
-    }));
+  const handleLocationImagesChange = (images) => {
+    setLocationImages(images);
+    // Clear image validation errors when images are added
+    if (images.length > 0 && errors.images) {
+      setErrors(prev => ({ ...prev, images: '' }));
+    }
   };
 
   const validateForm = () => {
@@ -174,9 +171,11 @@ const EditUnitPage = () => {
       newErrors.pricePerNight = 'Price per night must be a positive number';
     }
 
-    // Validate photos if none exist
-    if (photos.length === 0 && existingPhotos.length === 0) {
-      newErrors.photos = 'At least one photo is required';
+    // Validate images if none exist
+    if (locationImages.length === 0) {
+      newErrors.images = 'At least one image is required';
+    } else if (locationImages.length > 10) {
+      newErrors.images = 'You can upload a maximum of 10 images';
     }
 
     setErrors(newErrors);
@@ -198,19 +197,51 @@ const EditUnitPage = () => {
         ...formData,
         location: `${formData.address}, ${formData.county}`, // Combine address and county for backward compatibility
         capacity: parseInt(formData.capacity),
-        pricePerNight: parseFloat(formData.pricePerNight),
-        photos // Include photos in the submission
+        pricePerNight: parseFloat(formData.pricePerNight)
       };
 
       // Remove the separate address field as we've combined it with county into location
       delete submitData.address;
       // Keep county field for the new county property
 
-      const response = await api.put(`/api/units/${id}`, submitData);
-      
-      if (response.status === 200) {
-        success('Unit Updated', 'Your accommodation unit has been successfully updated!');
-        navigate('/my-units');
+      // Check if we have new images to upload
+      const newImages = locationImages.filter(img => img.isNew && img.file);
+      const existingImages = locationImages.filter(img => !img.isNew).map(img => img.url);
+
+      if (newImages.length > 0) {
+        // Use multipart form data for image upload
+        const formDataToSend = new FormData();
+        formDataToSend.append('unit', JSON.stringify({
+          ...submitData,
+          images: existingImages // Keep existing images
+        }));
+        
+        // Add new images
+        newImages.forEach((image) => {
+          formDataToSend.append('photos', image.file);
+        });
+
+        const response = await api.put(`/api/units/${id}/with-photos`, formDataToSend, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        if (response.status === 200) {
+          success('Unit Updated', 'Your accommodation unit has been successfully updated!');
+          navigate('/my-units');
+        }
+      } else {
+        // No new images, just update the unit data with existing images
+        const response = await api.put(`/api/units/${id}`, {
+          ...submitData,
+          images: existingImages
+        });
+        
+        if (response.status === 200) {
+          success('Unit Updated', 'Your accommodation unit has been successfully updated!');
+          navigate('/my-units');
+        }
       }
     } catch (error) {
       let errorMessage = 'Failed to update unit. Please try again.';
@@ -470,55 +501,20 @@ const EditUnitPage = () => {
               </div>
             </div>
 
-            {/* Photos Upload */}
+            {/* Location Images */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Photos *
+              <label className="block text-sm font-medium text-white mb-4">
+                Location Images * (1-10 images)
               </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoChange}
-                multiple
-                className="w-full px-4 py-3 bg-white/5 backdrop-blur-md border border-white/20 rounded-xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all duration-300"
-                disabled={loading}
+              <LocationImageGallery
+                images={locationImages}
+                onImagesChange={handleLocationImagesChange}
+                maxImages={10}
+                isEditing={true}
               />
-              {errors.photos && <p className="mt-1 text-red-400 text-sm">{errors.photos}</p>}
-
-              {/* Preview existing and new photos */}
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                {existingPhotos.length === 0 && photos.length === 0 && (
-                  <p className="text-center text-gray-400 text-sm col-span-2">
-                    No photos uploaded. Upload new photos for this unit.
-                  </p>
-                )}
-
-                {existingPhotos.map((photo, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={photo}
-                      alt={`Existing Photo ${index + 1}`}
-                      className="w-full h-32 object-cover rounded-xl border border-white/20"
-                    />
-                    <div className="absolute inset-0 bg-black bg-opacity-30 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-white text-sm">Existing Photo</p>
-                    </div>
-                  </div>
-                ))}
-
-                {photoPreviews.map((preview, index) => (
-                  <div key={`new-${index}`} className="relative group">
-                    <img
-                      src={preview}
-                      alt={`New Photo ${index + 1}`}
-                      className="w-full h-32 object-cover rounded-xl border border-white/20"
-                    />
-                    <div className="absolute inset-0 bg-black bg-opacity-30 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-white text-sm">New Photo</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {errors.images && (
+                <p className="text-red-400 text-sm mt-2">{errors.images}</p>
+              )}
             </div>
 
             {/* Submit Button */}

@@ -12,6 +12,7 @@ import UnitsListPage from '../pages/UnitsListPage';
 import UnitDetailsPage from '../pages/UnitDetailsPage';
 import MyUnitsPage from '../pages/MyUnitsPage';
 import AddUnitPage from '../pages/AddUnitPage';
+import AddPropertyPage from '../pages/AddPropertyPage';
 import EditUnitPage from '../pages/EditUnitPage';
 import ProfitAnalyticsPage from '../pages/ProfitAnalyticsPage';
 import BookingsPage from '../pages/BookingsPage';
@@ -92,6 +93,14 @@ const router = createBrowserRouter([
         element: (
           <RoleRoute allowedRoles={['OWNER', 'ADMIN']}>
             <AddUnitPage />
+          </RoleRoute>
+        )
+      },
+      {
+        path: 'add-property',
+        element: (
+          <RoleRoute allowedRoles={['OWNER', 'ADMIN']}>
+            <AddPropertyPage />
           </RoleRoute>
         )
       },

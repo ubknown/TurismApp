@@ -1,5 +1,6 @@
 package com.licentarazu.turismapp.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 
@@ -12,6 +13,7 @@ public class Booking {
 
     @ManyToOne
     @JoinColumn(name = "accommodation_unit_id", nullable = false)
+    @JsonIgnore // Prevent serialization of accommodationUnit to avoid circular references
     private AccommodationUnit accommodationUnit;
 
     private LocalDate checkInDate;
@@ -19,7 +21,14 @@ public class Booking {
 
     private String guestName; // Opțional, dar util
     private String guestEmail;
+    private String guestPhone; // Guest phone number
+    private Integer numberOfGuests; // Number of guests for the booking
+    private String specialRequests; // Special requests from guest
     private Double totalPrice; // Total price for the booking
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private BookingStatus status = BookingStatus.PENDING; // Default status
 
     // Constructori
     public Booking() {}
@@ -83,5 +92,37 @@ public class Booking {
 
     public void setTotalPrice(Double totalPrice) {
         this.totalPrice = totalPrice;
+    }
+
+    public BookingStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(BookingStatus status) {
+        this.status = status;
+    }
+
+    public String getGuestPhone() {
+        return guestPhone;
+    }
+
+    public void setGuestPhone(String guestPhone) {
+        this.guestPhone = guestPhone;
+    }
+
+    public Integer getNumberOfGuests() {
+        return numberOfGuests;
+    }
+
+    public void setNumberOfGuests(Integer numberOfGuests) {
+        this.numberOfGuests = numberOfGuests;
+    }
+
+    public String getSpecialRequests() {
+        return specialRequests;
+    }
+
+    public void setSpecialRequests(String specialRequests) {
+        this.specialRequests = specialRequests;
     }
 }

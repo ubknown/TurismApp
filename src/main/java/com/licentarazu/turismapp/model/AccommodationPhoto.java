@@ -1,5 +1,7 @@
 package com.licentarazu.turismapp.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -18,6 +20,7 @@ public class AccommodationPhoto {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "accommodation_unit_id", insertable = false, updatable = false)
+    @JsonIgnore // Prevent serialization of accommodationUnit to avoid circular references
     private AccommodationUnit accommodationUnit;
     
     // Constructors
