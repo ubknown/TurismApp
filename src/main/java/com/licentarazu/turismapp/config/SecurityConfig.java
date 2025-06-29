@@ -12,7 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -54,6 +54,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/resend-confirmation").permitAll()
                 .requestMatchers("/api/auth/test-email-config").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()  // Catch-all for any other auth endpoints
+                
+                // ✅ ADMIN LOGIN ENDPOINT - Must be accessible without authentication
+                .requestMatchers("/api/admin/login").permitAll()
                 
                 // Public endpoints - no authentication required
                 .requestMatchers("/api/units/public/**").permitAll()
@@ -167,6 +170,8 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // Use NoOpPasswordEncoder for plain text passwords
+        // WARNING: This is NOT secure for production! Only for development/testing.
+        return NoOpPasswordEncoder.getInstance();
     }
 }

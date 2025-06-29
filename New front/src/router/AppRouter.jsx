@@ -16,6 +16,8 @@ import EditUnitPage from '../pages/EditUnitPage';
 import ProfitAnalyticsPage from '../pages/ProfitAnalyticsPage';
 import BookingsPage from '../pages/BookingsPage';
 import DatabaseDebugPage from '../pages/DatabaseDebugPage';
+import OwnerApplicationResponsePage from '../pages/TestOwnerPage.jsx';
+import AdminDashboard from '../pages/AdminDashboard';
 import NotFoundPage from '../pages/NotFoundPage';
 import PrivateRoute from '../components/PrivateRoute';
 import RoleRoute from '../components/RoleRoute';
@@ -52,6 +54,14 @@ const router = createBrowserRouter([
       {
         path: 'confirm',
         element: <EmailConfirmedPage />
+      },
+      {
+        path: 'owner-application-response',
+        element: <OwnerApplicationResponsePage />
+      },
+      {
+        path: 'admin',
+        element: <AdminDashboard />
       },
       {
         path: 'dashboard',

@@ -147,12 +147,16 @@ public class UserService {
                 logger.info("✅ Deleted {} accommodation units", userUnits.size());
             }
             
-            // 3. Delete owner applications
-            logger.info("📝 Deleting owner applications...");
+            // 3. Unlink owner applications (preserve history for email-based tracking)
+            logger.info("📝 Unlinking owner applications (preserving history)...");
             Optional<OwnerApplication> ownerApplication = ownerApplicationRepository.findByUser(user);
             if (ownerApplication.isPresent()) {
-                ownerApplicationRepository.delete(ownerApplication.get());
-                logger.info("✅ Deleted owner application");
+                OwnerApplication application = ownerApplication.get();
+                // Unlink from user but keep the application record with email
+                application.setUser(null);
+                ownerApplicationRepository.save(application);
+                logger.info("✅ Unlinked owner application (email: {}, status: {})", 
+                           application.getEmail(), application.getStatus());
             } else {
                 logger.info("ℹ️ No owner application found");
             }

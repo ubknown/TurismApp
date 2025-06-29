@@ -12,13 +12,11 @@ public class OwnerApplicationResponse {
     private String message;
     private LocalDateTime submittedAt;
     private LocalDateTime reviewedAt;
-    private String reviewNotes;
 
     public OwnerApplicationResponse() {}
 
     public OwnerApplicationResponse(Long id, String userName, String userEmail, OwnerStatus status, 
-                                   String message, LocalDateTime submittedAt, LocalDateTime reviewedAt, 
-                                   String reviewNotes) {
+                                   String message, LocalDateTime submittedAt, LocalDateTime reviewedAt) {
         this.id = id;
         this.userName = userName;
         this.userEmail = userEmail;
@@ -26,7 +24,6 @@ public class OwnerApplicationResponse {
         this.message = message;
         this.submittedAt = submittedAt;
         this.reviewedAt = reviewedAt;
-        this.reviewNotes = reviewNotes;
     }
 
     // Getters and setters
@@ -84,13 +81,5 @@ public class OwnerApplicationResponse {
 
     public void setReviewedAt(LocalDateTime reviewedAt) {
         this.reviewedAt = reviewedAt;
-    }
-
-    public String getReviewNotes() {
-        return reviewNotes;
-    }
-
-    public void setReviewNotes(String reviewNotes) {
-        this.reviewNotes = reviewNotes;
     }
 }

@@ -24,7 +24,7 @@ import { ownerApplicationService } from '../services/ownerApplicationService';
 import { deleteAccount } from '../services/authService';
 
 const NavBar = () => {
-  const { user, isAuthenticated, logout, isGuest, isOwner, isAdmin, canApplyAsOwner, hasOwnerApplication, getOwnerStatus } = useAuth();
+  const { user, isAuthenticated, logout, isGuest, isOwner, isAdmin, canApplyAsOwner, hasOwnerApplication, getOwnerStatus, updateUser, refreshUser } = useAuth();
   const { info, success, error: showError } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -115,19 +115,21 @@ const NavBar = () => {
 
   return (
     <nav className="bg-white/5 backdrop-blur-xl border-b border-white/10 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link 
-            to="/" 
-            className="flex items-center space-x-2 text-white font-bold text-xl hover:text-violet-300 transition-colors"
-          >
-            <Mountain className="w-8 h-8 text-violet-400" />
-            <span>TurismApp</span>
-          </Link>
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between h-16 px-2">
+          {/* Logo and App Name - Far Left */}
+          <div className="flex items-center">
+            <Link 
+              to="/" 
+              className="flex items-center space-x-2 text-white font-bold text-xl hover:text-violet-300 transition-colors"
+            >
+              <Mountain className="w-8 h-8 text-violet-400" />
+              <span>TurismApp</span>
+            </Link>
+          </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* Desktop Navigation - Far Right */}
+          <div className="flex items-center gap-6">
             {/* Public Links */}
             <Link to="/" className={navLinkClass('/')}>
               <Home className="w-4 h-4" />
@@ -149,6 +151,14 @@ const NavBar = () => {
                       <BarChart3 className="w-4 h-4" />
                       Dashboard
                     </Link>
+                    
+                    {/* Admin specific link */}
+                    {isAdmin() && (
+                      <Link to="/admin" className={navLinkClass('/admin')}>
+                        <Settings className="w-4 h-4" />
+                        Admin Panel
+                      </Link>
+                    )}
                     
                     <Link to="/my-units" className={navLinkClass('/my-units')}>
                       <Building className="w-4 h-4" />
@@ -257,7 +267,7 @@ const NavBar = () => {
               </>
             ) : (
               /* Non-authenticated Links */
-              <div className="flex items-center space-x-3">
+              <>
                 <Link
                   to="/login"
                   className="px-4 py-2 text-violet-200 hover:text-white transition-colors flex items-center gap-2"
@@ -272,9 +282,8 @@ const NavBar = () => {
                   <UserPlus className="w-4 h-4" />
                   Sign Up
                 </Link>
-              </div>
+              </>
             )}
-          </div>
 
           {/* Mobile menu button */}
           <div className="md:hidden">
@@ -324,6 +333,18 @@ const NavBar = () => {
                         <BarChart3 className="w-4 h-4" />
                         Dashboard
                       </Link>
+                      
+                      {/* Admin specific mobile link */}
+                      {isAdmin() && (
+                        <Link 
+                          to="/admin" 
+                          className={`block ${navLinkClass('/admin')}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <Settings className="w-4 h-4" />
+                          Admin Panel
+                        </Link>
+                      )}
                       
                       <Link 
                         to="/my-units" 
@@ -549,17 +570,47 @@ const NavBar = () => {
               <button
                 onClick={async () => {
                   try {
+                    console.log('🚀 Starting owner application submission...');
+                    
                     const result = await ownerApplicationService.submitApplication(
                       'I would like to become a property owner on TurismApp to list my accommodations and start earning.'
                     );
                     
-                    success('Application Submitted!', result.message);
-                    setOwnerApplicationModalOpen(false);
+                    console.log('✅ Owner application submitted successfully:', result);
                     
-                    // Optionally refresh user data to get updated owner status
-                    window.location.reload();
+                    // Check if backend returned updated user data
+                    if (result.updatedUser) {
+                      console.log('🔄 Updating user state with fresh data from server:', result.updatedUser);
+                      
+                      // Update the user state immediately for instant UI refresh
+                      updateUser(result.updatedUser);
+                      
+                      success('Application Submitted!', result.message || 'Your owner application has been submitted successfully!');
+                      setOwnerApplicationModalOpen(false);
+                      
+                      console.log('✨ UI state updated successfully - no page reload needed!');
+                    } else {
+                      // Fallback: If backend doesn't return updated user data, use refresh method
+                      console.log('⚠️ Backend response missing updatedUser, falling back to refresh...');
+                      
+                      success('Application Submitted!', result.message || 'Your owner application has been submitted successfully!');
+                      setOwnerApplicationModalOpen(false);
+                      
+                      // Give a brief moment for success message, then refresh user data
+                      setTimeout(async () => {
+                        try {
+                          await refreshUser();
+                          console.log('✅ User data refreshed from server');
+                        } catch (refreshError) {
+                          console.error('❌ Failed to refresh user data:', refreshError);
+                          // Last resort fallback
+                          window.location.reload();
+                        }
+                      }, 500);
+                    }
                     
                   } catch (error) {
+                    console.error('❌ Owner application submission failed:', error);
                     showError('Application Failed', error.response?.data?.message || 'Failed to submit owner application. Please try again.');
                   }
                 }}
@@ -571,6 +622,7 @@ const NavBar = () => {
           </div>
         </div>
       )}
+      </div>
     </nav>
   );
 };

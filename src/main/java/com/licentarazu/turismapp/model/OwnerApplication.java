@@ -12,8 +12,11 @@ public class OwnerApplication {
     private Long id;
 
     @OneToOne
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @JoinColumn(name = "user_id", nullable = true) // Allow null when user is deleted
     private User user;
+    
+    @Column(nullable = false, unique = true) // Track by email to survive account deletion/recreation
+    private String email;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -34,6 +37,10 @@ public class OwnerApplication {
     @PrePersist
     protected void onCreate() {
         submittedAt = LocalDateTime.now();
+        // Ensure email is set from user if not already set
+        if (this.email == null && this.user != null) {
+            this.email = this.user.getEmail();
+        }
     }
 
     // Constructors
@@ -41,6 +48,7 @@ public class OwnerApplication {
 
     public OwnerApplication(User user, String message) {
         this.user = user;
+        this.email = user.getEmail(); // Always store email for persistence
         this.message = message;
         this.status = OwnerStatus.PENDING;
     }
@@ -60,6 +68,14 @@ public class OwnerApplication {
 
     public void setUser(User user) {
         this.user = user;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public OwnerStatus getStatus() {

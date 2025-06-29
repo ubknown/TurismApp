@@ -420,6 +420,180 @@ public class EmailService {
         }
     }
 
+    /**
+     * Send admin notification with approval/rejection links
+     */
+    public void sendOwnerApplicationApprovalLinks(String applicantName, String applicantEmail, 
+                                                  String applicationMessage, String approvalUrl, String rejectionUrl) {
+        try {
+            logger.info("=== SENDING OWNER APPLICATION APPROVAL LINKS EMAIL ===");
+            logger.info("To: {}", adminEmail);
+            logger.info("Applicant: {} ({})", applicantName, applicantEmail);
+
+            if (!isConfigurationValid()) {
+                logger.error("❌ EMAIL CONFIGURATION INVALID - Cannot send approval links email");
+                throw new RuntimeException("Email configuration not properly set up");
+            }
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(adminEmail);
+            message.setSubject("🔐 SECURE OWNER APPLICATION REVIEW REQUIRED - " + applicantName);
+
+            String emailBody = "🏨 TOURISM APP - SECURE OWNER APPLICATION REVIEW\n\n" +
+                    "A new owner application requires your review:\n\n" +
+                    "👤 APPLICANT DETAILS:\n" +
+                    "   Name: " + applicantName + "\n" +
+                    "   Email: " + applicantEmail + "\n" +
+                    "   Application Message: " + (applicationMessage != null ? applicationMessage : "No message provided") + "\n\n" +
+                    "🔐 SECURE REVIEW ACTIONS:\n\n" +
+                    "✅ APPROVE APPLICATION:\n" +
+                    "   " + approvalUrl + "\n\n" +
+                    "❌ REJECT APPLICATION:\n" +
+                    "   " + rejectionUrl + "\n\n" +
+                    "🔒 SECURITY NOTICE:\n" +
+                    "   • Each link can only be used once\n" +
+                    "   • You will be asked for the admin password\n" +
+                    "   • The applicant will be notified of your decision\n\n" +
+                    "Please click one of the links above to review this application.\n\n" +
+                    "Best regards,\n" +
+                    "Tourism App System\n\n" +
+                    "---\n" +
+                    "This is an automated secure notification email.\n" +
+                    "Application submitted at: " + java.time.LocalDateTime.now();
+
+            message.setText(emailBody);
+
+            mailSender.send(message);
+            logger.info("✅ APPROVAL LINKS EMAIL SENT SUCCESSFULLY to {}", adminEmail);
+
+        } catch (Exception e) {
+            logger.error("❌ FAILED TO SEND APPROVAL LINKS EMAIL to {}: {}", adminEmail, e.getMessage());
+            logger.error("Full error details: ", e);
+            throw new RuntimeException("Failed to send approval links email: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send approval notification to applicant
+     */
+    public void sendOwnerApplicationApprovalNotification(String to, String applicantName, String reviewNotes) {
+        try {
+            logger.info("=== SENDING OWNER APPLICATION APPROVAL NOTIFICATION ===");
+            logger.info("To: {}", to);
+
+            if (!isConfigurationValid()) {
+                logger.error("❌ EMAIL CONFIGURATION INVALID - Cannot send approval notification");
+                throw new RuntimeException("Email configuration not properly set up");
+            }
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(to);
+            message.setSubject("🎉 Congratulations! Your Tourism App Owner Application has been APPROVED");
+
+            String emailBody = "� TOURISM APP - OWNER APPLICATION APPROVED 🎉\n\n" +
+                    "Dear " + applicantName + ",\n\n" +
+                    "Congratulations! We are pleased to inform you that your owner application for Tourism App has been APPROVED!\n\n" +
+                    "✅ APPLICATION STATUS: APPROVED\n" +
+                    "🏨 NEW ROLE: Property Owner\n" +
+                    "📅 Approved on: " + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm")) + "\n\n";
+
+            if (reviewNotes != null && !reviewNotes.trim().isEmpty()) {
+                emailBody += "📝 WELCOME MESSAGE FROM OUR TEAM:\n" + reviewNotes + "\n\n";
+            }
+
+            emailBody += "🚀 WHAT'S NEXT - GET STARTED:\n" +
+                    "   🔐 Log in to your account with your existing credentials\n" +
+                    "   🏠 Add your first accommodation property\n" +
+                    "   📋 Set up property details, photos, and pricing\n" +
+                    "   📊 Manage bookings and guest reviews\n" +
+                    "   💰 Start earning from your properties today!\n\n" +
+                    "🎯 OWNER BENEFITS:\n" +
+                    "   • Full property management dashboard\n" +
+                    "   • Real-time booking notifications\n" +
+                    "   • Detailed analytics and profit reports\n" +
+                    "   • Direct communication with guests\n" +
+                    "   • Professional support from our team\n\n" +
+                    "Welcome to the Tourism App owner community! We're excited to have you on board.\n\n" +
+                    "If you have any questions or need assistance getting started, please don't hesitate to contact our support team.\n\n" +
+                    "Best regards,\n" +
+                    "The Tourism App Team 🏨\n\n" +
+                    "---\n" +
+                    "This is an automated notification email.\n" +
+                    "Tourism App - Your gateway to successful property management";
+
+            message.setText(emailBody);
+
+            mailSender.send(message);
+            logger.info("✅ APPROVAL NOTIFICATION SENT SUCCESSFULLY to {}", to);
+
+        } catch (Exception e) {
+            logger.error("❌ FAILED TO SEND APPROVAL NOTIFICATION to {}: {}", to, e.getMessage());
+            logger.error("Full error details: ", e);
+            throw new RuntimeException("Failed to send approval notification: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send rejection notification to applicant
+     */
+    public void sendOwnerApplicationRejectionNotification(String to, String applicantName, String reviewNotes) {
+        try {
+            logger.info("=== SENDING OWNER APPLICATION REJECTION NOTIFICATION ===");
+            logger.info("To: {}", to);
+
+            if (!isConfigurationValid()) {
+                logger.error("❌ EMAIL CONFIGURATION INVALID - Cannot send rejection notification");
+                throw new RuntimeException("Email configuration not properly set up");
+            }
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(to);
+            message.setSubject("📧 Update on Your Tourism App Owner Application");
+
+            String emailBody = "🏨 TOURISM APP - OWNER APPLICATION UPDATE\n\n" +
+                    "Dear " + applicantName + ",\n\n" +
+                    "Thank you for your interest in becoming a property owner on Tourism App. We appreciate the time you took to submit your application.\n\n" +
+                    "📋 APPLICATION STATUS: UNDER REVIEW\n" +
+                    "📅 Reviewed on: " + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' HH:mm")) + "\n\n" +
+                    "After careful consideration, we are unable to approve your owner application at this time.\n\n";
+
+            if (reviewNotes != null && !reviewNotes.trim().isEmpty()) {
+                emailBody += "📝 FEEDBACK FROM OUR REVIEW TEAM:\n" + reviewNotes + "\n\n";
+            }
+
+            emailBody += "🔄 NEXT STEPS AND OPPORTUNITIES:\n" +
+                    "   📊 Review the feedback provided above carefully\n" +
+                    "   🔄 You may reapply in the future if circumstances change\n" +
+                    "   📞 Contact our support team if you have questions about this decision\n" +
+                    "   🏠 Continue using Tourism App as a guest to explore accommodations\n\n" +
+                    "💡 WHAT YOU CAN DO NOW:\n" +
+                    "   • Continue browsing and booking amazing properties\n" +
+                    "   • Leave reviews to help other travelers\n" +
+                    "   • Save your favorite destinations\n" +
+                    "   • Stay updated on our platform improvements\n\n" +
+                    "We value your participation in the Tourism App community and encourage you to continue being part of our growing platform.\n\n" +
+                    "Thank you for your understanding and continued interest in Tourism App.\n\n" +
+                    "Best regards,\n" +
+                    "The Tourism App Review Team 🏨\n\n" +
+                    "---\n" +
+                    "This is an automated notification email.\n" +
+                    "Tourism App - Connecting travelers with amazing accommodations";
+
+            message.setText(emailBody);
+
+            mailSender.send(message);
+            logger.info("✅ REJECTION NOTIFICATION SENT SUCCESSFULLY to {}", to);
+
+        } catch (Exception e) {
+            logger.error("❌ FAILED TO SEND REJECTION NOTIFICATION to {}: {}", to, e.getMessage());
+            logger.error("Full error details: ", e);
+            throw new RuntimeException("Failed to send rejection notification: " + e.getMessage(), e);
+        }
+    }
+
     // Helper methods for testing and configuration validation
     public String getFromEmail() {
         return fromEmail;

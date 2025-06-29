@@ -1,2 +1,0 @@
-{"token":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiaWF0IjoxNzUwOTc2NzQ2LCJleHAiOjE3NTEwNjMxNDZ9.hgMLJPJHS2ZngLr4ruj2czCM6mQ7DUJkCGysokr4_FI","user":{"id":4,"firstName":"Test","lastName":"User","email":"test@example.com","phone":"+1234567890","address":"123 Test St","createdAt":null}}
-HTTP Status: 200

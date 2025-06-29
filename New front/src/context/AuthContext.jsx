@@ -39,6 +39,55 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, []);
 
+  /**
+   * Refresh user data from the server
+   * This is crucial for maintaining UI state consistency after server-side changes
+   * like owner application submissions, admin approvals, etc.
+   * 
+   * @returns {Promise<Object>} Updated user data or null if refresh fails
+   */
+  const refreshUser = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return null;
+      }
+
+      const response = await api.get('/api/auth/me');
+      const updatedUserData = response.data;
+      
+      // Update both state and localStorage with fresh data
+      setUser(updatedUserData);
+      localStorage.setItem('user', JSON.stringify(updatedUserData));
+      
+      console.log('User data refreshed successfully:', updatedUserData);
+      return updatedUserData;
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+      // If token is invalid, clear auth state
+      if (error.response?.status === 401) {
+        logout();
+      }
+      return null;
+    }
+  };
+
+  /**
+   * Update user data in both state and localStorage
+   * This enables immediate UI updates without server round-trips
+   * 
+   * @param {Object} userData - Updated user data object
+   */
+  const updateUser = (userData) => {
+    try {
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      console.log('User data updated locally:', userData);
+    } catch (error) {
+      console.error('Failed to update user data:', error);
+    }
+  };
+
   const login = async (email, password) => {
     try {
       const response = await api.post('/api/auth/login', {
@@ -100,6 +149,8 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    refreshUser,    // New method for server-side refresh
+    updateUser,     // New method for local state updates
     // Helper functions for role-based access
     isGuest: () => user?.role === 'GUEST',
     isOwner: () => user?.role === 'OWNER',

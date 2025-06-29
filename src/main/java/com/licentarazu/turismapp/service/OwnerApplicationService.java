@@ -35,7 +35,25 @@ public class OwnerApplicationService {
      */
     @Transactional
     public OwnerApplication submitApplication(User user, String message) {
-        // Check if user already has an application
+        // Check if there's already an application for this email (even from previous account)
+        String userEmail = user.getEmail();
+        Optional<OwnerApplication> existingByEmail = ownerApplicationRepository.findByEmail(userEmail);
+        
+        if (existingByEmail.isPresent()) {
+            OwnerApplication existing = existingByEmail.get();
+            // Re-link the application to the new user account
+            existing.setUser(user);
+            ownerApplicationRepository.save(existing);
+            
+            // Update user's owner status to match the existing application
+            user.setOwnerStatus(existing.getStatus());
+            userRepository.save(user);
+            
+            throw new IllegalStateException("This email already has an owner application with status: " + existing.getStatus() + 
+                                          ". Previous application from " + existing.getSubmittedAt() + " has been restored to your account.");
+        }
+
+        // Check if user already has an application (this is now redundant but kept for safety)
         if (ownerApplicationRepository.existsByUser(user)) {
             throw new IllegalStateException("User already has a pending or processed application");
         }
@@ -63,8 +81,9 @@ public class OwnerApplicationService {
             logger.info("Applicant: {} ({})", applicantName, user.getEmail());
             logger.info("Application Message: {}", message);
             
+            // Send simple admin notification without approval links
             emailService.sendOwnerApplicationNotificationToAdmin(applicantName, user.getEmail(), message);
-            logger.info("✅ ADMIN NOTIFICATION EMAIL SENT SUCCESSFULLY");
+            logger.info("✅ ADMIN NOTIFICATION SENT SUCCESSFULLY");
         } catch (Exception e) {
             logger.error("❌ FAILED TO SEND ADMIN NOTIFICATION EMAIL for application {}: {}", 
                         savedApplication.getId(), e.getMessage());
@@ -77,14 +96,36 @@ public class OwnerApplicationService {
     }
 
     /**
+     * Save an owner application (used for updates/re-linking)
+     */
+    public OwnerApplication saveApplication(OwnerApplication application) {
+        return ownerApplicationRepository.save(application);
+    }
+
+    /**
      * Get application by user
      */
     public Optional<OwnerApplication> getApplicationByUser(User user) {
         return ownerApplicationRepository.findByUser(user);
     }
+    
+    /**
+     * Get application by email (survives account deletion/recreation)
+     */
+    public Optional<OwnerApplication> getApplicationByEmail(String email) {
+        return ownerApplicationRepository.findByEmail(email);
+    }
+
+    /**
+     * Get application by ID
+     */
+    public Optional<OwnerApplication> getApplicationById(Long id) {
+        return ownerApplicationRepository.findById(id);
+    }
 
     /**
      * Check if user can apply to become an owner
+     * This now checks both current user status AND email history
      */
     public boolean canUserApply(User user) {
         // User cannot apply if they're already an owner
@@ -92,15 +133,53 @@ public class OwnerApplicationService {
             return false;
         }
         
+        // Check if there's already an application for this email (from current or previous account)
+        if (ownerApplicationRepository.existsByEmail(user.getEmail())) {
+            return false;
+        }
+        
         // User cannot apply if they already have an application (pending, approved, or rejected)
         return user.getOwnerStatus() == OwnerStatus.NONE;
     }
-
+    
+    /**
+     * Get the owner status for a user, checking both current user and email history
+     */
+    public OwnerStatus getUserOwnerStatus(User user) {
+        // First check if there's an application by email (survives account deletion)
+        Optional<OwnerApplication> applicationByEmail = ownerApplicationRepository.findByEmail(user.getEmail());
+        if (applicationByEmail.isPresent()) {
+            OwnerApplication application = applicationByEmail.get();
+            // Re-link to current user if needed
+            if (application.getUser() == null || !application.getUser().getId().equals(user.getId())) {
+                application.setUser(user);
+                ownerApplicationRepository.save(application);
+                
+                // Sync user's owner status
+                if (user.getOwnerStatus() != application.getStatus()) {
+                    user.setOwnerStatus(application.getStatus());
+                    userRepository.save(user);
+                }
+            }
+            return application.getStatus();
+        }
+        
+        // Fall back to user's current status
+        return user.getOwnerStatus();
+    }
+    
     /**
      * Get all pending applications (for admin review)
      */
     public List<OwnerApplication> getPendingApplications() {
         return ownerApplicationRepository.findByStatusOrderBySubmittedAtDesc(OwnerStatus.PENDING);
+    }
+
+    /**
+     * Get all applications (for admin dashboard)
+     */
+    public List<OwnerApplication> getAllApplications() {
+        return ownerApplicationRepository.findAllByOrderBySubmittedAtDesc();
     }
 
     /**
@@ -197,12 +276,5 @@ public class OwnerApplicationService {
         }
 
         return savedApplication;
-    }
-
-    /**
-     * Get all applications (for admin)
-     */
-    public List<OwnerApplication> getAllApplications() {
-        return ownerApplicationRepository.findAll();
     }
 }

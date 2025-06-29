@@ -140,45 +140,42 @@ const RegisterPage = () => {
       
       if (response.status === 201) {
         const roleText = formData.role === 'OWNER' ? 'Property Owner' : 'Guest';
-        const successMessage = `Registration successful as ${roleText}! A confirmation email has been sent.`;
         
-        // Show success message and log
+        // Display clear email verification message
+        const successMessage = `Registration successful! Please verify your email to activate your ${roleText.toLowerCase()} account.`;
         setSuccess(successMessage);
-        showSuccess('Registration Successful', 'Redirecting to login page...');
-        console.log('Registration successful, redirecting to login...'); // Debug log
         
-        // Prepare navigation state
+        // Show toast notification with verification instruction
+        showSuccess(
+          'Account Created Successfully', 
+          `Please check your email (${formData.email}) and click the verification link to activate your account.`
+        );
+        
+        console.log('Registration successful, showing verification message...'); // Debug log
+        
+        // Prepare navigation state for login page
         const navigationState = {
           registrationSuccess: true,
           userRole: roleText,
           email: formData.email,
-          timestamp: Date.now() // Add timestamp for debugging
+          timestamp: Date.now(),
+          needsVerification: true
         };
         
         console.log('Navigation state:', navigationState); // Debug log
         
-        // Use a shorter timeout and add fallback
+        // Show verification message for 3 seconds before redirecting
         const redirectTimer = setTimeout(() => {
-          console.log('Executing redirect to login page...'); // Debug log
+          console.log('Redirecting to login page after verification message...'); // Debug log
           navigate('/login', { 
             state: navigationState,
             replace: true 
           });
-        }, 1000); // Reduced to 1 second
+        }, 3000); // Restored to 3 seconds to allow reading the message
         
-        // Fallback redirect after 3 seconds if something goes wrong
-        const fallbackTimer = setTimeout(() => {
-          console.log('Fallback redirect executing...'); // Debug log
-          navigate('/login', { 
-            state: navigationState,
-            replace: true 
-          });
-        }, 3000);
-        
-        // Cleanup on unmount
+        // Cleanup timeout on unmount
         return () => {
           clearTimeout(redirectTimer);
-          clearTimeout(fallbackTimer);
         };
       }
     } catch (error) {

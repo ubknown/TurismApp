@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +31,7 @@ import com.licentarazu.turismapp.dto.RegisterRequest;
 import com.licentarazu.turismapp.dto.ResetPasswordRequest;
 import com.licentarazu.turismapp.dto.UserResponseDTO;
 import com.licentarazu.turismapp.model.ConfirmationToken;
+import com.licentarazu.turismapp.model.OwnerApplication;
 import com.licentarazu.turismapp.model.OwnerStatus;
 import com.licentarazu.turismapp.model.PasswordResetToken;
 import com.licentarazu.turismapp.model.Role;
@@ -48,6 +51,8 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AuthController {
+    
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
     private AuthenticationManager authenticationManager;
@@ -152,13 +157,27 @@ public class AuthController {
             // Register user (password will be hashed in service)
             User savedUser = userService.registerUser(user);
 
-            // If user selected OWNER during registration, create an owner application
-            if (request.getRole().toUpperCase().equals("OWNER")) {
+            // Check for existing owner application history for this email
+            Optional<OwnerApplication> existingApplication = ownerApplicationService.getApplicationByEmail(savedUser.getEmail());
+            if (existingApplication.isPresent()) {
+                OwnerApplication application = existingApplication.get();
+                // Re-link the application to the new user account
+                application.setUser(savedUser);
+                ownerApplicationService.saveApplication(application);
+                
+                // Update user's owner status to match the existing application
+                savedUser.setOwnerStatus(application.getStatus());
+                userRepository.save(savedUser);
+                
+                logger.info("✅ RESTORED OWNER APPLICATION HISTORY for {}: Status = {}, Original Date = {}", 
+                           savedUser.getEmail(), application.getStatus(), application.getSubmittedAt());
+            } else if (request.getRole().toUpperCase().equals("OWNER")) {
+                // If user selected OWNER during registration and no previous application exists, create new one
                 try {
                     ownerApplicationService.submitApplication(savedUser, "Automatic application created during registration");
                 } catch (Exception e) {
                     // Log the error but don't fail registration
-                    System.err.println("Failed to create owner application for user " + savedUser.getEmail() + ": " + e.getMessage());
+                    logger.error("Failed to create owner application for user {}: {}", savedUser.getEmail(), e.getMessage());
                 }
             }
 

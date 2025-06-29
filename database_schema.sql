@@ -413,7 +413,7 @@ DELIMITER ;
 
 -- Create application user (replace with your actual database user)
 -- CREATE USER 'turism_app'@'localhost' IDENTIFIED BY 'your_secure_password';
--- GRANT SELECT, INSERT, UPDATE, DELETE ON tourism_db.* TO 'turism_app'@'localhost';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON turismdb.* TO 'turism_app'@'localhost';
 -- FLUSH PRIVILEGES;
 
 -- ====================================================================

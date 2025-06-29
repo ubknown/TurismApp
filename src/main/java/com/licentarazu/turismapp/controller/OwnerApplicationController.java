@@ -32,6 +32,21 @@ public class OwnerApplicationController {
 
     /**
      * Submit an owner application
+     * 
+     * This endpoint allows authenticated GUEST users to submit an owner application.
+     * The response includes both application data and updated user information to
+     * enable immediate UI state updates without requiring a page reload.
+     * 
+     * Business Logic:
+     * - Validates user eligibility (must be GUEST with ownerStatus NONE)
+     * - Creates new OwnerApplication with PENDING status
+     * - Updates user's ownerStatus from NONE to PENDING
+     * - Sends admin notification email with approval links
+     * - Returns comprehensive response for UI state management
+     * 
+     * @param request The application request containing optional message
+     * @param authentication The authenticated user context
+     * @return ResponseEntity with application data and updated user information
      */
     @PostMapping
     public ResponseEntity<?> submitApplication(@Valid @RequestBody OwnerApplicationRequest request, 
@@ -52,10 +67,23 @@ public class OwnerApplicationController {
 
             OwnerApplication application = ownerApplicationService.submitApplication(user, request.getMessage());
             
+            // Fetch updated user data to include in response for immediate UI state update
+            User updatedUser = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found after application submission"));
+            
             return ResponseEntity.ok(Map.of(
                     "message", "Your owner application has been submitted successfully!",
                     "applicationId", application.getId(),
-                    "status", application.getStatus().name()
+                    "status", application.getStatus().name(),
+                    // Include updated user data for immediate UI state synchronization
+                    "updatedUser", Map.of(
+                            "id", updatedUser.getId(),
+                            "firstName", updatedUser.getFirstName(),
+                            "lastName", updatedUser.getLastName(),
+                            "email", updatedUser.getEmail(),
+                            "role", updatedUser.getRole().name(),
+                            "ownerStatus", updatedUser.getOwnerStatus().name()
+                    )
             ));
 
         } catch (IllegalStateException e) {
@@ -156,6 +184,7 @@ public class OwnerApplicationController {
 
             List<OwnerApplication> applications = ownerApplicationService.getPendingApplications();
             List<OwnerApplicationResponse> responses = applications.stream()
+                    .filter(app -> app.getUser() != null) // Filter out applications with null users
                     .map(app -> new OwnerApplicationResponse(
                             app.getId(),
                             app.getUser().getFirstName() + " " + app.getUser().getLastName(),
@@ -163,8 +192,7 @@ public class OwnerApplicationController {
                             app.getStatus(),
                             app.getMessage(),
                             app.getSubmittedAt(),
-                            app.getReviewedAt(),
-                            app.getReviewNotes()
+                            app.getReviewedAt()
                     ))
                     .collect(Collectors.toList());
 

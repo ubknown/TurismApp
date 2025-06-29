@@ -144,9 +144,12 @@ const LoginPage = () => {
         {/* Registration Success Banner */}
         {showSuccessBanner && registrationData && (
           <SuccessBanner
-            message={`Please check your email (${registrationData.email}) to activate your ${registrationData.userRole} account before logging in.`}
+            message={registrationData.needsVerification 
+              ? `Please verify your email (${registrationData.email}) to activate your ${registrationData.userRole.toLowerCase()} account. Check your inbox and click the verification link before logging in.`
+              : `Please check your email (${registrationData.email}) to activate your ${registrationData.userRole} account before logging in.`
+            }
             onClose={() => setShowSuccessBanner(false)}
-            autoHideDelay={6000}
+            autoHideDelay={8000}
             className="mb-6"
           />
         )}

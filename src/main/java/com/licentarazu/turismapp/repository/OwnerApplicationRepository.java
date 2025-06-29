@@ -14,9 +14,15 @@ public interface OwnerApplicationRepository extends JpaRepository<OwnerApplicati
     
     Optional<OwnerApplication> findByUser(User user);
     
+    Optional<OwnerApplication> findByEmail(String email);
+    
     boolean existsByUser(User user);
+    
+    boolean existsByEmail(String email);
     
     List<OwnerApplication> findByStatus(OwnerStatus status);
     
     List<OwnerApplication> findByStatusOrderBySubmittedAtDesc(OwnerStatus status);
+    
+    List<OwnerApplication> findAllByOrderBySubmittedAtDesc();
 }

@@ -12,7 +12,7 @@
 - ✅ **Element Collections** - Images and amenities for AccommodationUnit
 
 ### Database Configuration:
-- ✅ Database name: `tourism_db` (updated in application.properties)
+- ✅ Database name: `turismdb` (updated in application.properties)
 - ✅ DDL auto set to `none` (using manual schema)
 - ✅ SQL logging enabled for debugging
 
@@ -276,7 +276,7 @@ WHERE u.email = 'john.doe@test.com';
 - ✅ Ensure IDs are properly set
 
 ### Issue 2: Table Name Mismatches
-**Symptoms:** `Table 'tourism_db.accommodation_unit_images' doesn't exist`
+**Symptoms:** `Table 'turismdb.accommodation_unit_images' doesn't exist`
 
 **Solutions:**
 - ✅ Check @Table annotations in entities
