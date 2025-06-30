@@ -1,7 +1,10 @@
 package com.licentarazu.turismapp.service;
 
 import com.licentarazu.turismapp.model.Booking;
+import com.licentarazu.turismapp.model.BookingStatus;
 import com.licentarazu.turismapp.model.User;
+import com.licentarazu.turismapp.model.AccommodationUnit;
+import com.licentarazu.turismapp.dto.BookingResponseDTO;
 import com.licentarazu.turismapp.repository.BookingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -12,6 +15,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.TextStyle;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class BookingService {
@@ -295,5 +299,111 @@ public class BookingService {
         }
 
         return ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100.0;
+    }
+
+    // ✅ Get booking by ID
+    public Booking getBookingById(Long bookingId) {
+        return bookingRepository.findById(bookingId).orElse(null);
+    }
+
+    // ✅ Cancel booking with email notifications
+    public Booking cancelBookingWithNotifications(Booking booking, User cancelledBy) {
+        logger.info("Cancelling booking ID: {} by user: {}", booking.getId(), cancelledBy.getEmail());
+
+        // Validate booking can be cancelled
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new IllegalStateException("Booking is already cancelled");
+        }
+
+        if (booking.getStatus() == BookingStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot cancel a completed booking");
+        }
+
+        // Update booking status
+        booking.setStatus(BookingStatus.CANCELLED);
+        Booking cancelledBooking = bookingRepository.save(booking);
+        
+        logger.info("✅ Booking status updated to CANCELLED: {}", booking.getId());
+
+        // Send email notifications asynchronously (don't fail cancellation if emails fail)
+        try {
+            // Determine who cancelled the booking
+            boolean cancelledByGuest = cancelledBy.getEmail().equals(booking.getGuestEmail());
+            boolean cancelledByOwner = booking.getAccommodationUnit().getOwner().getId().equals(cancelledBy.getId());
+
+            // Send cancellation notification to guest (if cancelled by owner/admin)
+            if (!cancelledByGuest && booking.getGuestEmail() != null && !booking.getGuestEmail().isEmpty()) {
+                logger.info("Sending cancellation notification to guest: {}", booking.getGuestEmail());
+                emailService.sendBookingCancellationToGuest(cancelledBooking, cancelledBy);
+            }
+
+            // Send cancellation notification to owner (if cancelled by guest/admin)
+            if (!cancelledByOwner && booking.getAccommodationUnit().getOwner() != null) {
+                logger.info("Sending cancellation notification to owner: {}", 
+                           booking.getAccommodationUnit().getOwner().getEmail());
+                emailService.sendBookingCancellationToOwner(cancelledBooking, cancelledBy);
+            }
+
+            // If cancelled by admin, notify both parties
+            if (!cancelledByGuest && !cancelledByOwner) {
+                logger.info("Admin cancellation - notifying both guest and owner");
+                if (booking.getGuestEmail() != null && !booking.getGuestEmail().isEmpty()) {
+                    emailService.sendBookingCancellationToGuest(cancelledBooking, cancelledBy);
+                }
+                if (booking.getAccommodationUnit().getOwner() != null) {
+                    emailService.sendBookingCancellationToOwner(cancelledBooking, cancelledBy);
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("Error sending booking cancellation emails (cancellation still successful): {}", e.getMessage());
+            // Don't fail the cancellation if email sending fails
+        }
+
+        return cancelledBooking;
+    }
+
+    // ✅ Convert Booking entity to BookingResponseDTO with unit details
+    public BookingResponseDTO convertToResponseDTO(Booking booking) {
+        BookingResponseDTO dto = new BookingResponseDTO();
+        
+        // Booking details
+        dto.setId(booking.getId());
+        dto.setCheckInDate(booking.getCheckInDate());
+        dto.setCheckOutDate(booking.getCheckOutDate());
+        dto.setGuestName(booking.getGuestName());
+        dto.setGuestEmail(booking.getGuestEmail());
+        dto.setGuestPhone(booking.getGuestPhone());
+        dto.setNumberOfGuests(booking.getNumberOfGuests());
+        dto.setSpecialRequests(booking.getSpecialRequests());
+        dto.setTotalPrice(booking.getTotalPrice());
+        dto.setStatus(booking.getStatus());
+        
+        // Unit details (if available)
+        AccommodationUnit unit = booking.getAccommodationUnit();
+        if (unit != null) {
+            dto.setUnitId(unit.getId());
+            dto.setUnitName(unit.getName());
+            dto.setUnitLocation(unit.getLocation());
+            dto.setUnitCounty(unit.getCounty());
+            dto.setUnitType(unit.getType() != null ? unit.getType().toString() : null);
+            dto.setUnitPricePerNight(unit.getPricePerNight());
+            
+            // Get first image URL if available
+            if (unit.getImages() != null && !unit.getImages().isEmpty()) {
+                dto.setUnitImageUrl(unit.getImages().get(0));
+            }
+        }
+        
+        return dto;
+    }
+
+    // ✅ Get user bookings as DTOs with unit details
+    public List<BookingResponseDTO> getUserBookingsAsDTO(String guestEmail) {
+        List<Booking> allBookings = getAllBookings();
+        return allBookings.stream()
+                .filter(booking -> guestEmail.equals(booking.getGuestEmail()))
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
     }
 }

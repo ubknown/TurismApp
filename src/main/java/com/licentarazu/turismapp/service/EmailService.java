@@ -627,4 +627,164 @@ public class EmailService {
             // Other errors might be okay for connection testing
         }
     }
+
+    /**
+     * Send booking cancellation notification email to the guest
+     */
+    public void sendBookingCancellationToGuest(Booking booking, User cancelledBy) {
+        logger.info("=== SENDING BOOKING CANCELLATION EMAIL TO GUEST ===");
+
+        if (booking.getGuestEmail() == null || booking.getGuestEmail().trim().isEmpty()) {
+            logger.warn("Cannot send cancellation notification - guest email is null or empty");
+            return;
+        }
+
+        if (!isConfigurationValid()) {
+            logger.warn("❌ Email configuration invalid - skipping cancellation notification to guest");
+            return;
+        }
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(booking.getGuestEmail());
+            message.setSubject("Booking Cancelled - " + booking.getAccommodationUnit().getName());
+
+            // Determine who cancelled the booking
+            String cancelledByText;
+            if (cancelledBy.getEmail().equals(booking.getGuestEmail())) {
+                cancelledByText = "You have";
+            } else if (booking.getAccommodationUnit().getOwner().getId().equals(cancelledBy.getId())) {
+                cancelledByText = "The property owner has";
+            } else {
+                cancelledByText = "An administrator has";
+            }
+
+            String emailBody = String.format(
+                "Dear %s,\n\n" +
+                "%s cancelled your booking for %s.\n\n" +
+                "BOOKING DETAILS:\n" +
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+                "🏨 Property: %s\n" +
+                "📍 Location: %s\n" +
+                "📅 Check-in: %s\n" +
+                "📅 Check-out: %s\n" +
+                "👥 Guests: %d\n" +
+                "💰 Total Amount: %.2f RON\n" +
+                "🆔 Booking ID: %d\n" +
+                "❌ Status: CANCELLED\n" +
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                "If you have any questions about this cancellation, please contact us or the property owner.\n\n" +
+                "We apologize for any inconvenience and hope to serve you again in the future.\n\n" +
+                "Best regards,\n" +
+                "TurismApp Team\n" +
+                "%s",
+                booking.getGuestName() != null ? booking.getGuestName() : "Guest",
+                cancelledByText,
+                booking.getAccommodationUnit().getName(),
+                booking.getAccommodationUnit().getName(),
+                booking.getAccommodationUnit().getLocation(),
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getNumberOfGuests() != null ? booking.getNumberOfGuests() : 1,
+                booking.getTotalPrice() != null ? booking.getTotalPrice() : 0.0,
+                booking.getId(),
+                baseUrl
+            );
+
+            message.setText(emailBody);
+            mailSender.send(message);
+
+            logger.info("✅ Booking cancellation email sent successfully to guest: {}", booking.getGuestEmail());
+
+        } catch (Exception e) {
+            logger.error("❌ FAILED TO SEND BOOKING CANCELLATION EMAIL to guest: {}", booking.getGuestEmail());
+            logger.error("Error details: {}", e.getMessage());
+            // Don't throw exception to avoid breaking the cancellation process
+        }
+    }
+
+    /**
+     * Send booking cancellation notification email to the property owner
+     */
+    public void sendBookingCancellationToOwner(Booking booking, User cancelledBy) {
+        logger.info("=== SENDING BOOKING CANCELLATION EMAIL TO OWNER ===");
+
+        User owner = booking.getAccommodationUnit().getOwner();
+        if (owner == null || owner.getEmail() == null) {
+            logger.warn("Cannot send cancellation notification - owner or owner email is null");
+            return;
+        }
+
+        if (!isConfigurationValid()) {
+            logger.warn("❌ Email configuration invalid - skipping cancellation notification to owner");
+            return;
+        }
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(owner.getEmail());
+            message.setSubject("Booking Cancelled - " + booking.getAccommodationUnit().getName());
+
+            // Determine who cancelled the booking
+            String cancelledByText;
+            if (cancelledBy.getEmail().equals(booking.getGuestEmail())) {
+                cancelledByText = "The guest has";
+            } else if (owner.getId().equals(cancelledBy.getId())) {
+                cancelledByText = "You have";
+            } else {
+                cancelledByText = "An administrator has";
+            }
+
+            String emailBody = String.format(
+                "Dear %s,\n\n" +
+                "%s cancelled a booking for your property: %s.\n\n" +
+                "BOOKING DETAILS:\n" +
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+                "🏨 Property: %s\n" +
+                "👤 Guest: %s\n" +
+                "📧 Guest Email: %s\n" +
+                "📞 Guest Phone: %s\n" +
+                "📅 Check-in: %s\n" +
+                "📅 Check-out: %s\n" +
+                "👥 Guests: %d\n" +
+                "💰 Total Amount: %.2f RON\n" +
+                "🆔 Booking ID: %d\n" +
+                "❌ Status: CANCELLED\n" +
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                "%s\n\n" +
+                "Please update your availability calendar accordingly.\n\n" +
+                "Best regards,\n" +
+                "TurismApp Team\n" +
+                "%s",
+                owner.getFirstName() != null ? owner.getFirstName() : "Property Owner",
+                cancelledByText,
+                booking.getAccommodationUnit().getName(),
+                booking.getAccommodationUnit().getName(),
+                booking.getGuestName() != null ? booking.getGuestName() : "N/A",
+                booking.getGuestEmail(),
+                booking.getGuestPhone() != null ? booking.getGuestPhone() : "N/A",
+                booking.getCheckInDate(),
+                booking.getCheckOutDate(),
+                booking.getNumberOfGuests() != null ? booking.getNumberOfGuests() : 1,
+                booking.getTotalPrice() != null ? booking.getTotalPrice() : 0.0,
+                booking.getId(),
+                booking.getSpecialRequests() != null && !booking.getSpecialRequests().trim().isEmpty() 
+                    ? "Special Requests: " + booking.getSpecialRequests() 
+                    : "No special requests.",
+                baseUrl
+            );
+
+            message.setText(emailBody);
+            mailSender.send(message);
+
+            logger.info("✅ Booking cancellation email sent successfully to owner: {}", owner.getEmail());
+
+        } catch (Exception e) {
+            logger.error("❌ FAILED TO SEND BOOKING CANCELLATION EMAIL to owner: {}", owner.getEmail());
+            logger.error("Error details: {}", e.getMessage());
+            // Don't throw exception to avoid breaking the cancellation process
+        }
+    }
 }

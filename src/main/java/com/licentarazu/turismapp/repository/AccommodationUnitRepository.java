@@ -14,16 +14,15 @@ public interface AccommodationUnitRepository extends JpaRepository<Accommodation
 
     @Query("SELECT DISTINCT a FROM AccommodationUnit a " +
             "LEFT JOIN FETCH a.photos " +
-            "LEFT JOIN Review r ON r.accommodationUnit = a " +
             "WHERE a.available = true AND a.status = 'active' " +
-            "AND (:location IS NULL OR LOWER(a.location) LIKE LOWER(CONCAT('%', :location, '%')) OR LOWER(a.county) LIKE LOWER(CONCAT('%', :location, '%'))) " +
+            "AND (:location IS NULL OR :location = '' OR LOWER(a.location) LIKE LOWER(CONCAT('%', :location, '%')) OR LOWER(a.county) LIKE LOWER(CONCAT('%', :location, '%'))) " +
             "AND (:minPrice IS NULL OR a.pricePerNight >= :minPrice) " +
             "AND (:maxPrice IS NULL OR a.pricePerNight <= :maxPrice) " +
             "AND (:minCapacity IS NULL OR a.capacity >= :minCapacity) " +
             "AND (:maxCapacity IS NULL OR a.capacity <= :maxCapacity) " +
-            "AND (:type IS NULL OR a.type = :type) " +
-            "GROUP BY a " +
-            "HAVING (:minRating IS NULL OR AVG(r.rating) >= :minRating)")
+            "AND (:type IS NULL OR :type = '' OR a.type = :type) " +
+            "AND (:minRating IS NULL OR " +
+            "     (SELECT COALESCE(AVG(r.rating), 0) FROM Review r WHERE r.accommodationUnit = a) >= :minRating)")
     List<AccommodationUnit> findByFiltersWithRating(
             @Param("location") String location,
             @Param("minPrice") Double minPrice,

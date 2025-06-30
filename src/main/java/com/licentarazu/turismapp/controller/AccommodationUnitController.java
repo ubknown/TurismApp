@@ -1,11 +1,11 @@
 package com.licentarazu.turismapp.controller;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,11 +15,11 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.ContentDisposition;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -304,84 +304,94 @@ public class AccommodationUnitController {
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
             @RequestParam(required = false) Integer capacity,
+            @RequestParam(required = false) Double minRating,
             @RequestParam(required = false) String amenities,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
 
-        System.out.println("=== PUBLIC UNITS REQUEST ===");
-        System.out.println("Search: " + search + ", County: " + county + ", Type: " + type);
+        System.out.println("🌐 PUBLIC ENDPOINT ACCESSED - /api/units/public");
+        System.out.println("=== PUBLIC UNITS REQUEST DEBUG ===");
+        System.out.println("Search: '" + search + "'");
+        System.out.println("County: '" + county + "'");
+        System.out.println("Type: '" + type + "'");
         System.out.println("Price range: " + minPrice + " - " + maxPrice);
+        System.out.println("Capacity: " + capacity);
+        System.out.println("MinRating: " + minRating);
+        System.out.println("Amenities: '" + amenities + "'");
+        System.out.println("Date range: " + checkIn + " to " + checkOut);
+        System.out.println("========================================");
+        
+        // Debug: Check total units in database first
+        List<AccommodationUnit> allUnits = unitRepository.findAllActiveAndAvailable();
+        System.out.println("📊 TOTAL ACTIVE UNITS IN DB: " + allUnits.size());
         
         List<AccommodationUnit> units;
         
         // If no filters are provided, get ALL active units
-        if (isNoFiltersProvided(search, location, county, type, minPrice, maxPrice, capacity, checkIn, checkOut)) {
+        if (isNoFiltersProvided(search, location, county, type, minPrice, maxPrice, capacity, minRating, checkIn, checkOut)) {
             System.out.println("No filters provided, getting all active and available units");
             units = unitRepository.findAllActiveAndAvailable();
             System.out.println("Found " + units.size() + " active units");
         } else {
-            // Use county filter if provided, otherwise use location
-            String filterLocation = county != null ? county : location;
-            if (search != null && !search.isEmpty() && filterLocation == null) {
-                filterLocation = search;
+            System.out.println("Filters provided, applying repository filtering...");
+            
+            // For search, apply it as location filter if no specific location/county provided
+            String locationFilter = null;
+            if (county != null && !county.isEmpty()) {
+                locationFilter = county;
+                System.out.println("Using county filter: " + county);
+            } else if (location != null && !location.isEmpty()) {
+                locationFilter = location;
+                System.out.println("Using location filter: " + location);
+            } else if (search != null && !search.isEmpty()) {
+                locationFilter = search;
+                System.out.println("Using search as location filter: " + search);
             }
 
             units = unitService.getFilteredUnits(
-                    filterLocation,
+                    locationFilter,
                     minPrice,
                     maxPrice,
                     capacity,
                     null, // maxCapacity not needed for this endpoint
-                    type, // ✅ Added type filtering
-                    null // minRating not needed
+                    type,
+                    minRating
             );
-        }
-        
-        System.out.println("Initial units count: " + units.size());
-
-        // If search term is provided, further filter by name/description
-        if (search != null && !search.isEmpty()) {
-            units = units.stream()
-                    .filter(unit -> unit.getName().toLowerCase().contains(search.toLowerCase()) ||
-                            unit.getDescription().toLowerCase().contains(search.toLowerCase()) ||
-                            unit.getLocation().toLowerCase().contains(search.toLowerCase()))
-                    .toList();
-        }
-
-        // Enhanced county filtering - use dedicated county field if available, fallback to location
-        if (county != null && !county.isEmpty()) {
-            units = units.stream()
-                    .filter(unit -> {
-                        // First check the dedicated county field
-                        if (unit.getCounty() != null && !unit.getCounty().isEmpty()) {
-                            return unit.getCounty().toLowerCase().contains(county.toLowerCase());
-                        }
-                        // Fallback to location field for backward compatibility
-                        return unit.getLocation() != null &&
-                               unit.getLocation().toLowerCase().contains(county.toLowerCase());
-                    })
-                    .toList();
+            System.out.println("Units after repository filtering: " + units.size());
+            
+            // If search is provided and we haven't used it as location filter, apply additional name/description filtering
+            if (search != null && !search.isEmpty() && !search.equals(locationFilter)) {
+                System.out.println("Applying additional search filtering for: " + search);
+                final String searchTerm = search.toLowerCase();
+                units = units.stream()
+                        .filter(unit -> 
+                            (unit.getName() != null && unit.getName().toLowerCase().contains(searchTerm)) ||
+                            (unit.getDescription() != null && unit.getDescription().toLowerCase().contains(searchTerm)) ||
+                            (unit.getLocation() != null && unit.getLocation().toLowerCase().contains(searchTerm)) ||
+                            (unit.getCounty() != null && unit.getCounty().toLowerCase().contains(searchTerm))
+                        )
+                        .toList();
+                System.out.println("Units after search filtering: " + units.size());
+            }
         }
 
-        // If amenities filter is provided
-        if (amenities != null && !amenities.isEmpty()) {
-            // Note: This requires amenities field in AccommodationUnit model
-            // For now, we'll skip this filter until the model is enhanced
-        }
-
-        // ✅ Apply date-based availability filter if check-in and check-out dates are
-        // provided
+        // ✅ Apply date-based availability filter if check-in and check-out dates are provided
         if (checkIn != null && checkOut != null) {
+            System.out.println("🗓️ Date filtering requested: " + checkIn + " to " + checkOut);
+            
             // Validate dates
             if (checkIn.isAfter(checkOut)) {
-                return ResponseEntity.badRequest().body(List.of()); // Return empty list for invalid date range
+                System.out.println("❌ Invalid date range: check-in after check-out");
+                return ResponseEntity.ok(List.of()); // Return empty list for invalid date range
             }
             if (checkIn.isBefore(LocalDate.now())) {
-                return ResponseEntity.badRequest().body(List.of()); // Return empty list for past dates
+                System.out.println("❌ Invalid date range: check-in in the past");
+                return ResponseEntity.ok(List.of()); // Return empty list for past dates
             }
 
             // Filter units that are available in the given date range
             units = unitService.filterUnitsByAvailability(units, checkIn, checkOut);
+            System.out.println("📊 Units after date filtering: " + units.size());
         }
 
         // Convert entities to DTOs to prevent circular references
@@ -717,7 +727,7 @@ public class AccommodationUnitController {
 
     // Helper method to check if no filters are provided
     private boolean isNoFiltersProvided(String search, String location, String county, String type, 
-                                      Double minPrice, Double maxPrice, Integer capacity, 
+                                      Double minPrice, Double maxPrice, Integer capacity, Double minRating,
                                       LocalDate checkIn, LocalDate checkOut) {
         return (search == null || search.isEmpty()) &&
                (location == null || location.isEmpty()) &&
@@ -726,6 +736,7 @@ public class AccommodationUnitController {
                minPrice == null &&
                maxPrice == null &&
                capacity == null &&
+               minRating == null &&
                checkIn == null &&
                checkOut == null;
     }
@@ -755,5 +766,51 @@ public class AccommodationUnitController {
         }
         
         return photoUrls;
+    }
+
+    // ✅ Debug endpoint for testing date filtering - RESTRICTED TO DEV
+    @GetMapping("/debug/date-filter")
+    @CrossOrigin(origins = { "http://localhost:5174", "http://localhost:5173", "http://localhost:3000" })
+    @org.springframework.context.annotation.Profile({"dev", "development"})
+    public ResponseEntity<Map<String, Object>> debugDateFiltering(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        
+        System.out.println("🔍 DEBUG: Date filtering test for " + checkIn + " to " + checkOut);
+        
+        Map<String, Object> debugInfo = new HashMap<>();
+        debugInfo.put("requestedCheckIn", checkIn.toString());
+        debugInfo.put("requestedCheckOut", checkOut.toString());
+        debugInfo.put("currentDate", LocalDate.now().toString());
+        
+        try {
+            // Get all units first
+            List<AccommodationUnit> allUnits = unitRepository.findAllActiveAndAvailable();
+            debugInfo.put("totalActiveUnits", allUnits.size());
+            
+            // Apply date filtering
+            List<AccommodationUnit> availableUnits = unitService.filterUnitsByAvailability(allUnits, checkIn, checkOut);
+            debugInfo.put("availableUnitsAfterFilter", availableUnits.size());
+            
+            // Add details for each unit
+            List<Map<String, Object>> unitDetails = new ArrayList<>();
+            for (AccommodationUnit unit : allUnits.subList(0, Math.min(5, allUnits.size()))) { // Only first 5 for debugging
+                Map<String, Object> unitInfo = new HashMap<>();
+                unitInfo.put("id", unit.getId());
+                unitInfo.put("name", unit.getName());
+                unitInfo.put("available", availableUnits.contains(unit));
+                unitDetails.add(unitInfo);
+            }
+            debugInfo.put("unitSample", unitDetails);
+            
+            debugInfo.put("success", true);
+            return ResponseEntity.ok(debugInfo);
+            
+        } catch (Exception e) {
+            debugInfo.put("success", false);
+            debugInfo.put("error", e.getMessage());
+            debugInfo.put("stackTrace", e.toString());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(debugInfo);
+        }
     }
 }

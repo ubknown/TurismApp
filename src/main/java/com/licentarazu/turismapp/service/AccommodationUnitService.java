@@ -17,6 +17,7 @@ import com.licentarazu.turismapp.model.AccommodationUnit;
 import com.licentarazu.turismapp.model.Booking;
 import com.licentarazu.turismapp.model.BookingStatus;
 import com.licentarazu.turismapp.model.Reservation;
+import com.licentarazu.turismapp.model.ReservationStatus;
 import com.licentarazu.turismapp.model.User;
 import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
 import com.licentarazu.turismapp.repository.BookingRepository;
@@ -141,8 +142,25 @@ public class AccommodationUnitService {
     public List<AccommodationUnit> getFilteredUnits(String location, Double minPrice, Double maxPrice,
             Integer minCapacity, Integer maxCapacity, String type,
             Double minRating) {
-        return accommodationUnitRepository.findByFiltersWithRating(location, minPrice, maxPrice,
-                minCapacity, maxCapacity, type, minRating);
+        
+        System.out.println("🔍 SERVICE: getFilteredUnits called with parameters:");
+        System.out.println("  - location: '" + location + "'");
+        System.out.println("  - minPrice: " + minPrice);
+        System.out.println("  - maxPrice: " + maxPrice);
+        System.out.println("  - minCapacity: " + minCapacity);
+        System.out.println("  - maxCapacity: " + maxCapacity);
+        System.out.println("  - type: '" + type + "'");
+        System.out.println("  - minRating: " + minRating);
+        
+        List<AccommodationUnit> result = accommodationUnitRepository.findByFiltersWithRating(
+                location, minPrice, maxPrice, minCapacity, maxCapacity, type, minRating);
+        
+        System.out.println("🎯 SERVICE: Repository returned " + result.size() + " units");
+        if (result.size() > 0) {
+            System.out.println("  - First unit: " + result.get(0).getName() + " (ID: " + result.get(0).getId() + ")");
+        }
+        
+        return result;
     }
 
     // ✅ Filtrare după disponibilitate într-un interval check-in / check-out
@@ -452,25 +470,61 @@ public class AccommodationUnitService {
 
     // ✅ Check if a unit is available for the given date range
     private boolean isUnitAvailable(AccommodationUnit unit, LocalDate checkIn, LocalDate checkOut) {
-        // Check if unit is marked as available
-        if (!unit.isAvailable()) {
+        System.out.println("🔍 Checking availability for unit " + unit.getId() + " from " + checkIn + " to " + checkOut);
+        
+        // Check both Booking and Reservation entities for conflicts
+        
+        // 1. Check Bookings (if they exist)
+        try {
+            List<Booking> existingBookings = bookingRepository.findByAccommodationUnitAndStatusIn(
+                unit, 
+                List.of(BookingStatus.CONFIRMED, BookingStatus.PENDING)
+            );
+            
+            for (Booking booking : existingBookings) {
+                if (datesOverlap(checkIn, checkOut, booking.getCheckInDate(), booking.getCheckOutDate())) {
+                    System.out.println("❌ Unit " + unit.getId() + " unavailable - overlaps with booking " + booking.getId() + 
+                                     " (" + booking.getCheckInDate() + " to " + booking.getCheckOutDate() + ")");
+                    return false;
+                }
+            }
+            System.out.println("✅ No conflicting bookings found for unit " + unit.getId());
+        } catch (Exception e) {
+            System.out.println("⚠️ Could not check bookings (might not exist): " + e.getMessage());
+        }
+        
+        // 2. Check Reservations (main conflict source based on your SQL)
+        try {
+            // 🔧 FIXED: Get ALL reservations for this unit and filter manually for accurate results
+            List<Reservation> allUnitReservations = reservationRepository.findByUnitId(unit.getId());
+            List<Reservation> conflictingReservations = allUnitReservations.stream()
+                .filter(res -> res.getStatus() == ReservationStatus.CONFIRMED)
+                .filter(res -> datesOverlap(checkIn, checkOut, res.getStartDate(), res.getEndDate()))
+                .toList();
+            
+            if (!conflictingReservations.isEmpty()) {
+                System.out.println("❌ Unit " + unit.getId() + " unavailable - has " + conflictingReservations.size() + " confirmed reservations");
+                for (Reservation res : conflictingReservations) {
+                    System.out.println("   - Reservation " + res.getId() + ": " + res.getStartDate() + " to " + res.getEndDate() + " (status: " + res.getStatus() + ")");
+                }
+                return false;
+            }
+            System.out.println("✅ No conflicting reservations found for unit " + unit.getId());
+        } catch (Exception e) {
+            System.out.println("⚠️ Could not check reservations: " + e.getMessage());
+            // If we can't check reservations but SQL shows they exist, this is the problem
             return false;
         }
-
-        // Check overlapping bookings (if using Booking entity)
-        List<Booking> overlappingBookings = bookingRepository
-                .findByAccommodationUnitAndCheckOutDateAfterAndCheckInDateBefore(unit, checkIn, checkOut);
-
-        if (!overlappingBookings.isEmpty()) {
-            return false;
-        }
-
-        // Check overlapping reservations (if using Reservation entity)
-        List<Reservation> overlappingReservations = reservationRepository
-                .findByUnitIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                        unit.getId(), checkOut, checkIn);
-
-        return overlappingReservations.isEmpty();
+        
+        System.out.println("✅ Unit " + unit.getId() + " is available for the requested dates");
+        return true;
+    }
+    
+    // ✅ Check if two date ranges overlap
+    private boolean datesOverlap(LocalDate checkIn1, LocalDate checkOut1, LocalDate checkIn2, LocalDate checkOut2) {
+        // Two date ranges overlap if: 
+        // (checkIn1 < checkOut2) AND (checkOut1 > checkIn2)
+        return checkIn1.isBefore(checkOut2) && checkOut1.isAfter(checkIn2);
     }
 
     @Transactional

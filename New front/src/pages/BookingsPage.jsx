@@ -19,6 +19,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import GlassCard from '../components/GlassCard';
 import PrimaryButton from '../components/PrimaryButton';
+import BookingCancelButton from '../components/BookingCancelButton';
+import BookingStatusBadge from '../components/BookingStatusBadge';
 import api from '../services/axios';
 
 const BookingsPage = () => {
@@ -52,18 +54,24 @@ const BookingsPage = () => {
       // Transform backend data to match frontend expectations
       const transformedBookings = (response.data || []).map(booking => ({
         id: booking.id,
-        unitId: booking.accommodationUnit?.id,
-        unitName: booking.accommodationUnit?.name || 'Unknown Unit',
-        unitLocation: booking.accommodationUnit?.location || 'Unknown Location',
+        unitId: booking.unitId || booking.accommodationUnit?.id,
+        unitName: booking.unitName || booking.accommodationUnit?.name || 'Unknown Unit',
+        unitLocation: booking.unitLocation || booking.accommodationUnit?.location || 'Unknown Location',
+        unitCounty: booking.unitCounty || booking.accommodationUnit?.county,
+        unitType: booking.unitType || booking.accommodationUnit?.type,
+        unitImageUrl: booking.unitImageUrl || (booking.accommodationUnit?.images?.[0]),
         checkInDate: booking.checkInDate,
         checkOutDate: booking.checkOutDate,
         guestName: booking.guestName,
         guestEmail: booking.guestEmail,
+        guestPhone: booking.guestPhone,
+        numberOfGuests: booking.numberOfGuests || 1,
+        specialRequests: booking.specialRequests,
         userEmail: booking.guestEmail, // For compatibility
-        totalPrice: calculateTotalPrice(booking),
+        totalPrice: booking.totalPrice || calculateTotalPrice(booking),
         nights: calculateNights(booking.checkInDate, booking.checkOutDate),
-        status: 'CONFIRMED', // Default status since Booking model doesn't have status
-        canReview: isGuest() && new Date(booking.checkOutDate) < new Date() // Can review if past checkout
+        status: booking.status || 'PENDING', // ✅ Use actual status from backend
+        canReview: isGuest() && new Date(booking.checkOutDate) < new Date() && (booking.status === 'COMPLETED' || booking.status === 'CONFIRMED') // Can review if past checkout and not cancelled
       }));
       
       setBookings(transformedBookings);
@@ -77,11 +85,18 @@ const BookingsPage = () => {
   };
 
   const calculateTotalPrice = (booking) => {
-    if (!booking.accommodationUnit?.pricePerNight || !booking.checkInDate || !booking.checkOutDate) {
+    // If totalPrice is already provided in DTO, use it
+    if (booking.totalPrice) {
+      return booking.totalPrice.toFixed(2);
+    }
+    
+    // Fallback calculation using unit price per night
+    const pricePerNight = booking.unitPricePerNight || booking.accommodationUnit?.pricePerNight;
+    if (!pricePerNight || !booking.checkInDate || !booking.checkOutDate) {
       return '0.00';
     }
     const nights = calculateNights(booking.checkInDate, booking.checkOutDate);
-    const totalPrice = nights * booking.accommodationUnit.pricePerNight;
+    const totalPrice = nights * pricePerNight;
     return totalPrice.toFixed(2);
   };
 
@@ -92,18 +107,23 @@ const BookingsPage = () => {
     return Math.max(1, Math.ceil(timeDiff / (1000 * 3600 * 24)));
   };
 
-  const handleCancelBooking = async (bookingId) => {
-    if (!window.confirm('Are you sure you want to cancel this booking?')) {
-      return;
-    }
-
-    try {
-      await api.delete(`/api/bookings/${bookingId}`);
-      success('Booking Cancelled', 'The booking has been successfully cancelled.');
-      fetchBookings(); // Refresh the bookings list
-    } catch (error) {
-      console.error('Failed to cancel booking:', error);
-      showError('Error', 'Failed to cancel booking. Please try again.');
+  const handleCancelBooking = async (bookingId, updatedBooking = null) => {
+    console.log('🔵 Handling booking cancellation in BookingsPage:', bookingId);
+    
+    if (updatedBooking) {
+      // Update the specific booking in the list with the new status
+      setBookings(prev => prev.map(booking => 
+        booking.id === bookingId 
+          ? { 
+              ...booking, 
+              status: updatedBooking.status || 'CANCELLED',
+              canReview: false // Cancelled bookings can't be reviewed
+            }
+          : booking
+      ));
+    } else {
+      // Fallback: refresh the entire list
+      fetchBookings();
     }
   };
 
@@ -157,21 +177,14 @@ const BookingsPage = () => {
     ));
   };
 
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      CONFIRMED: { color: 'text-green-300 bg-green-500/20 border-green-500/30', icon: CheckCircle },
-      PENDING: { color: 'text-yellow-300 bg-yellow-500/20 border-yellow-500/30', icon: Clock },
-      CANCELLED: { color: 'text-red-300 bg-red-500/20 border-red-500/30', icon: XCircle },
-    };
-    
-    const config = statusConfig[status] || statusConfig.PENDING;
-    const Icon = config.icon;
-    
-    return (
-      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${config.color}`}>
-        <Icon className="w-3 h-3" />
-        {status}
-      </span>
+  // ✅ Handle booking cancellation
+  const handleBookingCancelled = (bookingId, updatedBooking) => {
+    setBookings(prevBookings => 
+      prevBookings.map(booking => 
+        booking.id === bookingId 
+          ? { ...booking, status: 'CANCELLED' }
+          : booking
+      )
     );
   };
 
@@ -250,7 +263,7 @@ const BookingsPage = () => {
                       <h3 className="text-lg font-semibold text-white">
                         {booking.unitName || 'Accommodation Unit'}
                       </h3>
-                      {getStatusBadge(booking.status)}
+                      <BookingStatusBadge status={booking.status} />
                     </div>
                     
                     <div className="space-y-2 text-sm">
@@ -316,13 +329,13 @@ const BookingsPage = () => {
                       </button>
                     )}
                     
-                    <button
-                      onClick={() => handleCancelBooking(booking.id)}
-                      className="flex items-center gap-1 px-3 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-red-200 rounded-lg transition-all duration-300 text-sm"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Cancel
-                    </button>
+                    {/* ✅ Enhanced Cancel Button with proper authorization and status checks */}
+                    <BookingCancelButton 
+                      booking={booking}
+                      onCancelled={handleCancelBooking}
+                      userRole={isGuest() ? 'guest' : (isOwner() ? 'owner' : 'admin')}
+                      compact={true}
+                    />
                   </div>
 
                   {/* Review Form */}

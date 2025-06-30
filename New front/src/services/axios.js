@@ -16,10 +16,19 @@ api.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔵 Axios Request:', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        hasToken: !!token,
+        tokenPrefix: token.substring(0, 20) + '...'
+      });
+    } else {
+      console.warn('⚠️ No token found for request:', config.method?.toUpperCase(), config.url);
     }
     return config;
   },
   (error) => {
+    console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -30,6 +39,14 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    console.error('❌ Axios Response Error:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url,
+      method: error.config?.method?.toUpperCase(),
+      data: error.response?.data
+    });
+
     if (error.response?.status === 401) {
       // Check if this is a request to a public endpoint
       const publicEndpoints = [
@@ -46,6 +63,7 @@ api.interceptors.response.use(
       
       // Only redirect to login for protected endpoints
       if (!isPublicEndpoint) {
+        console.warn('🔴 401 Unauthorized - redirecting to login');
         // Token expired or invalid - logout user
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -53,6 +71,11 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+
+    if (error.response?.status === 403) {
+      console.warn('🔴 403 Forbidden - access denied');
+    }
+
     return Promise.reject(error);
   }
 );

@@ -37,6 +37,7 @@ const UnitsListPage = () => {
     minPrice: '',
     maxPrice: '',
     capacity: '',
+    minRating: '',
     amenities: [],
     checkIn: '',
     checkOut: ''
@@ -95,35 +96,76 @@ const UnitsListPage = () => {
     
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [filters]); // Removed searchQuery from dependency array - search now only triggers on form submit
+  }, []); // Only fetch on component mount - filters are applied manually via Search/Apply buttons
 
-  const fetchUnits = async () => {
+  const fetchUnits = async (customFilters = null, customSearchQuery = null) => {
     try {
       setLoading(true);
       
       // ✅ Clear any existing error notifications when starting new fetch
       clearToastsByType('error');
       
+      // Use provided filters or current state
+      const currentFilters = customFilters || filters;
+      const currentSearch = customSearchQuery !== null ? customSearchQuery : searchQuery;
+      
+      // ✅ Validate dates before making API call
+      if (currentFilters.checkIn && currentFilters.checkOut) {
+        console.log('🗓️ Validating dates:', currentFilters.checkIn, 'to', currentFilters.checkOut);
+        if (!validateDates(currentFilters.checkIn, currentFilters.checkOut)) {
+          setLoading(false);
+          return; // Don't proceed with search if dates are invalid
+        }
+        console.log('✅ Date validation passed');
+      }
+      
       // Build query parameters
       const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
-      if (filters.county) params.append('county', filters.county);
-      if (filters.type) params.append('type', filters.type);
-      if (filters.minPrice) params.append('minPrice', filters.minPrice);
-      if (filters.maxPrice) params.append('maxPrice', filters.maxPrice);
-      if (filters.capacity) params.append('capacity', filters.capacity);
-      if (filters.amenities.length > 0) params.append('amenities', filters.amenities.join(','));
+      if (currentSearch) params.append('search', currentSearch);
+      if (currentFilters.county) params.append('county', currentFilters.county);
+      if (currentFilters.type) params.append('type', currentFilters.type);
+      if (currentFilters.minPrice) params.append('minPrice', currentFilters.minPrice);
+      if (currentFilters.maxPrice) params.append('maxPrice', currentFilters.maxPrice);
+      if (currentFilters.capacity) params.append('capacity', currentFilters.capacity);
+      if (currentFilters.minRating) params.append('minRating', currentFilters.minRating);
+      if (currentFilters.amenities.length > 0) params.append('amenities', currentFilters.amenities.join(','));
       
       // ✅ Add date-based availability filters
-      if (filters.checkIn) params.append('checkIn', filters.checkIn);
-      if (filters.checkOut) params.append('checkOut', filters.checkOut);
+      if (currentFilters.checkIn) {
+        params.append('checkIn', currentFilters.checkIn);
+        console.log('📅 Adding checkIn parameter:', currentFilters.checkIn);
+      }
+      if (currentFilters.checkOut) {
+        params.append('checkOut', currentFilters.checkOut);
+        console.log('📅 Adding checkOut parameter:', currentFilters.checkOut);
+      }
       
       const url = `/api/units/public?${params.toString()}`;
       console.log('🔍 Fetching units from:', url);
+      console.log('🔍 Full URL will be:', `http://localhost:8080${url}`);
+      
+      // 🆕 ADD DETAILED DEBUGGING
+      console.log('🔍 Current filter state:', {
+        checkIn: currentFilters.checkIn,
+        checkOut: currentFilters.checkOut,
+        county: currentFilters.county,
+        type: currentFilters.type,
+        capacity: currentFilters.capacity,
+        minPrice: currentFilters.minPrice,
+        maxPrice: currentFilters.maxPrice
+      });
       
       const response = await api.get(url);
       console.log('📦 Response received:', response.data);
       console.log('📊 Units count:', response.data ? response.data.length : 'null/undefined');
+      
+      // 🆕 ADD MORE DEBUGGING
+      console.log('📊 Response status:', response.status);
+      console.log('📊 Response headers:', response.headers);
+      if (response.data && Array.isArray(response.data)) {
+        console.log('📊 First unit in response:', response.data[0]);
+        console.log('📊 All unit IDs:', response.data.map(unit => unit.id));
+      }
       
       // Ensure response.data is always an array
       const responseData = Array.isArray(response.data) ? response.data : [];
@@ -136,14 +178,14 @@ const UnitsListPage = () => {
       if (responseData.length > 0) {
         // ✅ Units found - clear any error toasts and show success only when meaningful
         clearToastsByType('error');
-        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f && f.length > 0);
+        const hasActiveFilters = currentSearch || Object.values(currentFilters).some(f => f && f.length > 0);
         if (hasActiveFilters) {
           success('Units Found', `Found ${responseData.length} matching accommodation${responseData.length > 1 ? 's' : ''}`);
         }
       } else {
         // ✅ No units found - clear success toasts and show appropriate error
         clearToastsByType('success');
-        const hasActiveFilters = searchQuery || Object.values(filters).some(f => f && f.length > 0);
+        const hasActiveFilters = currentSearch || Object.values(currentFilters).some(f => f && f.length > 0);
         if (hasActiveFilters) {
           showError('No Matching Units', 'No accommodations match your search criteria. Try adjusting your filters or search terms.');
         } else {
@@ -152,6 +194,12 @@ const UnitsListPage = () => {
       }
     } catch (error) {
       console.error('❌ Error fetching units:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        url: error.config?.url
+      });
       // ✅ Clear any success toasts on error and set units to empty
       clearToastsByType('success');
       setUnits([]);
@@ -174,9 +222,14 @@ const UnitsListPage = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    // Update URL search params and trigger fetchUnits
+    // Update URL search params and trigger fetchUnits with current filters
     setSearchParams({ search: searchQuery });
-    fetchUnits();
+    fetchUnits(filters, searchQuery);
+  };
+
+  // ✅ Fixed function to trigger search with current filter state
+  const handleFilterSearch = () => {
+    fetchUnits(filters, searchQuery);
   };
 
   const getAmenityIcon = (amenity) => {
@@ -373,40 +426,42 @@ const UnitsListPage = () => {
     return true;
   };
 
-  // ✅ Enhanced date filter handlers with validation
+  // ✅ Enhanced date filter handlers without automatic filtering
   const handleCheckInChange = (e) => {
     const newCheckIn = e.target.value;
     setFilters(prev => ({ ...prev, checkIn: newCheckIn }));
     
-    if (newCheckIn && filters.checkOut && !validateDates(newCheckIn, filters.checkOut)) {
+    // Clear check-out if it becomes invalid
+    if (newCheckIn && filters.checkOut && newCheckIn >= filters.checkOut) {
       setFilters(prev => ({ ...prev, checkOut: '' }));
     }
   };
 
   const handleCheckOutChange = (e) => {
     const newCheckOut = e.target.value;
-    
-    if (filters.checkIn && !validateDates(filters.checkIn, newCheckOut)) {
-      return; // Don't update if validation fails
-    }
-    
     setFilters(prev => ({ ...prev, checkOut: newCheckOut }));
   };
 
   // ✅ Enhanced clear filters function with notification management
   const handleClearFilters = () => {
     clearToastsByType('error'); // Clear any "No Units Found" errors
-    setFilters({
+    const clearedFilters = {
       county: '',
       type: '',
       minPrice: '',
       maxPrice: '',
       capacity: '',
+      minRating: '',
       amenities: [],
       checkIn: '',
       checkOut: ''
-    });
+    };
+    setFilters(clearedFilters);
     setSearchQuery('');
+    // 🆕 AUTO-FETCH after clearing filters to show all units
+    setTimeout(() => {
+      fetchUnits(clearedFilters, '');
+    }, 100);
   };
 
   // ✅ Handle sort change without API call - just re-sort current units
@@ -414,6 +469,43 @@ const UnitsListPage = () => {
     setSortBy(newSortBy);
     // Re-sort existing units immediately for better UX
     setUnits(prevUnits => sortUnits(prevUnits, newSortBy));
+  };
+
+  // ✅ Check if any filters are active (for enabling Apply Filters button)
+  const hasActiveFilters = () => {
+    return (
+      searchQuery ||
+      filters.county ||
+      filters.type ||
+      filters.minPrice ||
+      filters.maxPrice ||
+      filters.capacity ||
+      filters.minRating ||
+      filters.checkIn ||
+      filters.checkOut ||
+      (filters.amenities && filters.amenities.length > 0)
+    );
+  };
+
+  // ✅ Check if Apply Filters button should be enabled
+  const isApplyFiltersEnabled = () => {
+    const hasFilters = hasActiveFilters();
+    
+    // If no filters, disable button
+    if (!hasFilters) return false;
+    
+    // If dates are provided, validate them
+    if (filters.checkIn && filters.checkOut) {
+      return validateDates(filters.checkIn, filters.checkOut);
+    }
+    
+    // If only one date is provided, that's invalid
+    if (filters.checkIn || filters.checkOut) {
+      return false;
+    }
+    
+    // Other filters are valid
+    return true;
   };
 
   if (loading) {
@@ -485,7 +577,7 @@ const UnitsListPage = () => {
               >
                 <SlidersHorizontal className="w-4 h-4" />
                 Filters
-                {Object.values(filters).some(f => f) && (
+                {hasActiveFilters() && (
                   <span className="ml-1 w-2 h-2 bg-violet-400 rounded-full"></span>
                 )}
               </PrimaryButton>
@@ -578,7 +670,7 @@ const UnitsListPage = () => {
                 </div>
               </div>
 
-              {/* Second Row: Min Price, Max Price, Clear Button */}
+              {/* Second Row: Min Price, Max Price, Min Rating, Clear Button */}
               <div className="flex flex-wrap gap-4 w-full items-end">
                 {/* Min Price */}
                 <div className="flex flex-col min-w-[200px] flex-1">
@@ -610,17 +702,49 @@ const UnitsListPage = () => {
                   />
                 </div>
 
+                {/* Min Rating */}
+                <div className="flex flex-col min-w-[200px] flex-1">
+                  <label className="block text-sm font-medium text-white/80 mb-2 flex items-center">
+                    ⭐ Min Rating
+                  </label>
+                  <select
+                    value={filters.minRating}
+                    onChange={(e) => setFilters(prev => ({ ...prev, minRating: e.target.value }))}
+                    className="w-full min-w-[200px] h-12 rounded-lg px-3 bg-[#21006b1a] border border-[#3a1858] text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all duration-300"
+                  >
+                    <option value="" className="bg-slate-800 text-white">All Ratings</option>
+                    <option value="1" className="bg-slate-800 text-white">1+ Stars</option>
+                    <option value="2" className="bg-slate-800 text-white">2+ Stars</option>
+                    <option value="3" className="bg-slate-800 text-white">3+ Stars</option>
+                    <option value="4" className="bg-slate-800 text-white">4+ Stars</option>
+                    <option value="4.5" className="bg-slate-800 text-white">4.5+ Stars</option>
+                  </select>
+                </div>
+
                 {/* Clear All Filters Button */}
                 <div className="flex flex-col min-w-[200px] flex-1">
                   <label className="block text-sm font-medium text-white/80 mb-2 opacity-0">
-                    Clear
+                    Actions
                   </label>
-                  <button
-                    onClick={handleClearFilters}
-                    className="w-full min-w-[200px] h-12 rounded-lg px-3 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 text-white transition-all duration-300 font-medium"
-                  >
-                    Clear All Filters
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleClearFilters}
+                      className="flex-1 min-w-[100px] h-12 rounded-lg px-3 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 text-white transition-all duration-300 font-medium"
+                    >
+                      Clear Filters
+                    </button>
+                    <button
+                      onClick={handleFilterSearch}
+                      disabled={!isApplyFiltersEnabled()}
+                      className={`flex-1 min-w-[100px] h-12 rounded-lg px-3 transition-all duration-300 font-medium ${
+                        isApplyFiltersEnabled()
+                          ? 'bg-blue-500 hover:bg-blue-600 border border-blue-500 text-white cursor-pointer shadow-lg'
+                          : 'bg-gray-500/20 border border-gray-500/30 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
                 </div>
               </div>
             </GlassCard>
@@ -699,7 +823,7 @@ const UnitsListPage = () => {
         <BookingForm
           unitId={selectedUnit.id}
           unitName={selectedUnit.name}
-          unitPrice={selectedUnit.price}
+          unitPrice={selectedUnit.pricePerNight || selectedUnit.price || 0}
           onClose={() => setShowBookingForm(false)}
           onBookingCreated={handleBookingCreated}
         />

@@ -5,6 +5,7 @@ import com.licentarazu.turismapp.model.User;
 import com.licentarazu.turismapp.model.AccommodationUnit;
 import com.licentarazu.turismapp.model.BookingStatus;
 import com.licentarazu.turismapp.dto.BookingRequestDTO;
+import com.licentarazu.turismapp.dto.BookingResponseDTO;
 import com.licentarazu.turismapp.service.BookingService;
 import com.licentarazu.turismapp.repository.UserRepository;
 import com.licentarazu.turismapp.repository.AccommodationUnitRepository;
@@ -180,17 +181,15 @@ public class BookingController {
         return ResponseEntity.ok(recentBookings);
     }
 
-    // ✅ Get bookings for authenticated guest user (by email)
+    // ✅ Get bookings for authenticated guest user (by email) with unit details
     @GetMapping("/my-bookings")
-    public ResponseEntity<List<Booking>> getUserBookings(Authentication authentication) {
+    public ResponseEntity<List<BookingResponseDTO>> getUserBookings(Authentication authentication) {
         String email = authentication.getName();
+        logger.info("🔍 Fetching bookings for user: {}", email);
 
-        // Get all bookings and filter by guest email
-        List<Booking> allBookings = bookingService.getAllBookings();
-        List<Booking> userBookings = allBookings.stream()
-                .filter(booking -> email.equals(booking.getGuestEmail()))
-                .collect(Collectors.toList());
-
+        List<BookingResponseDTO> userBookings = bookingService.getUserBookingsAsDTO(email);
+        logger.info("✅ Found {} bookings for user: {}", userBookings.size(), email);
+        
         return ResponseEntity.ok(userBookings);
     }
 
@@ -210,5 +209,90 @@ public class BookingController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(ownerBookings);
+    }
+
+    // ✅ Cancel booking endpoint - accessible by both guest and owner
+    @PutMapping("/{bookingId}/cancel")
+    public ResponseEntity<?> cancelBooking(@PathVariable Long bookingId, Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            logger.info("🔵 Cancel booking request: bookingId={}, user={}", bookingId, userEmail);
+
+            // Get the booking
+            Booking booking = bookingService.getBookingById(bookingId);
+            if (booking == null) {
+                logger.error("❌ Booking not found: {}", bookingId);
+                return ResponseEntity.notFound().build();
+            }
+
+            // Check if user is authorized to cancel this booking
+            User currentUser = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            boolean isGuest = userEmail.equals(booking.getGuestEmail());
+            boolean isOwner = booking.getAccommodationUnit().getOwner().getId().equals(currentUser.getId());
+            boolean isAdmin = currentUser.getRole().name().equals("ADMIN");
+
+            if (!isGuest && !isOwner && !isAdmin) {
+                logger.error("❌ Unauthorized cancel attempt: user={}, bookingId={}", userEmail, bookingId);
+                return ResponseEntity.status(403).body("You are not authorized to cancel this booking");
+            }
+
+            // Check if booking can be cancelled
+            if (booking.getStatus() == BookingStatus.CANCELLED) {
+                logger.warn("⚠️ Booking already cancelled: {}", bookingId);
+                return ResponseEntity.badRequest().body("Booking is already cancelled");
+            }
+
+            if (booking.getStatus() == BookingStatus.COMPLETED) {
+                logger.warn("⚠️ Cannot cancel completed booking: {}", bookingId);
+                return ResponseEntity.badRequest().body("Cannot cancel a completed booking");
+            }
+
+            // Cancel the booking with email notifications
+            Booking cancelledBooking = bookingService.cancelBookingWithNotifications(booking, currentUser);
+            
+            logger.info("✅ Booking cancelled successfully: {}", bookingId);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Booking cancelled successfully. Notification emails have been sent.",
+                    "bookingId", cancelledBooking.getId(),
+                    "status", cancelledBooking.getStatus().toString(),
+                    "cancelledBy", isGuest ? "guest" : (isOwner ? "owner" : "admin")
+            ));
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.error("❌ Business logic error cancelling booking: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("❌ Unexpected error cancelling booking: ", e);
+            return ResponseEntity.status(500).body("An error occurred while cancelling the booking: " + e.getMessage());
+        }
+    }
+
+    // ✅ Debug endpoint to test authentication
+    @GetMapping("/debug/auth")
+    public ResponseEntity<?> debugAuth(Authentication authentication) {
+        try {
+            String userEmail = authentication.getName();
+            User currentUser = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+            
+            logger.info("🔵 Debug auth - user: {}, role: {}", userEmail, currentUser.getRole());
+            
+            return ResponseEntity.ok(Map.of(
+                "authenticated", true,
+                "email", userEmail,
+                "role", currentUser.getRole().name(),
+                "id", currentUser.getId(),
+                "enabled", currentUser.getEnabled()
+            ));
+        } catch (Exception e) {
+            logger.error("❌ Debug auth error: ", e);
+            return ResponseEntity.status(500).body(Map.of(
+                "authenticated", false,
+                "error", e.getMessage()
+            ));
+        }
     }
 }

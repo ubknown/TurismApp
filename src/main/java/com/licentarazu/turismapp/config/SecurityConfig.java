@@ -58,28 +58,27 @@ public class SecurityConfig {
                 // ✅ ADMIN LOGIN ENDPOINT - Must be accessible without authentication
                 .requestMatchers("/api/admin/login").permitAll()
                 
-                // Public endpoints - no authentication required
+                // ✅ PUBLIC UNITS ENDPOINTS - HIGHEST PRIORITY for public access
                 .requestMatchers("/api/units/public/**").permitAll()
                 .requestMatchers("/api/units/public").permitAll()
-                .requestMatchers("/api/units").permitAll()
-                .requestMatchers("/api/units/{id}").permitAll()
+                
+                // ✅ DEBUG ENDPOINTS (DEV ONLY) - Allow public access for debugging date filtering
+                .requestMatchers("/api/units/debug/**").permitAll()
+                .requestMatchers("/api/accommodation-units/debug/**").permitAll()
+                
+                // Public units endpoints - specific endpoints first
                 .requestMatchers("/api/units/search").permitAll()
                 .requestMatchers("/api/units/filter").permitAll()
                 .requestMatchers("/api/units/available").permitAll()
                 .requestMatchers("/api/units/proximity").permitAll()
                 .requestMatchers("/api/units/advanced-filter").permitAll()
                 .requestMatchers("/api/units/{id}/photos").permitAll()
+                .requestMatchers("/api/units/{id}").permitAll()
+                .requestMatchers("/api/units").permitAll()
+                
+                // Alternative accommodation units endpoints
                 .requestMatchers("/api/accommodation-units/public/**").permitAll()
                 .requestMatchers("/api/accommodation-units/public").permitAll()
-                
-                // Units browsing and details (public access)
-                .requestMatchers("/api/units").permitAll()
-                .requestMatchers("/api/units/{id}").permitAll()
-                .requestMatchers("/api/units/search").permitAll()
-                .requestMatchers("/api/units/filter").permitAll()
-                .requestMatchers("/api/units/available").permitAll()
-                .requestMatchers("/api/units/proximity").permitAll()
-                .requestMatchers("/api/units/advanced-filter").permitAll()
                 
                 // Reviews endpoints (public read access)
                 .requestMatchers("/api/reviews/unit/**").permitAll()
